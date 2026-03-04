@@ -35,6 +35,7 @@ export function renderEln() {
         <button class="btn btn-primary" onclick="openAddEln()">
           ＋ ${A.lang==='tr'?'Yeni Kayıt':'New Entry'}
         </button>
+        <button class="btn btn-secondary" onclick="openElnTemplateManager()">📋 ${A.lang==='tr'?'Şablonlar':'Templates'}</button>
         <button class="btn btn-secondary" onclick="elnExport()">📊 Excel</button>
       </div>
     </div>
@@ -179,17 +180,43 @@ const ELN_TEMPLATES = {
 <p></p>`
 };
 
-window.applyElnTemplate = () => {
+window.applyElnTemplate = async () => {
   const sel = document.getElementById('elnTemplateSelect');
   const tpl = sel?.value;
-  if (!tpl || !ELN_TEMPLATES[tpl]) return;
+  if (!tpl) return;
+
+  // Handle "Manage Templates" option
+  if (tpl === '__manage__') {
+    sel.value = '';
+    if (window.openElnTemplateManager) window.openElnTemplateManager();
+    return;
+  }
+
+  let templateContent = null;
+
+  // Check custom templates first
+  if (tpl.startsWith('custom_')) {
+    const tplId = tpl.replace('custom_', '');
+    const customTpl = (A.customTemplates || []).find(t => t.id === tplId);
+    if (customTpl) templateContent = customTpl.content;
+    else {
+      // Fetch from Firestore
+      const snap = await getDoc(doc(db, 'elnTemplates', tplId));
+      if (snap.exists()) templateContent = snap.data().content;
+    }
+  } else if (ELN_TEMPLATES[tpl]) {
+    templateContent = ELN_TEMPLATES[tpl];
+  }
+
+  if (!templateContent) { sel.value = ''; return; }
+
   if (elnQuill) {
     if (elnQuill.getText().trim().length > 1) {
       if (!confirm(A.lang === 'tr' ? 'Mevcut içerik silinecek. Devam?' : 'Content will be replaced. Continue?')) {
         sel.value = ''; return;
       }
     }
-    elnQuill.root.innerHTML = ELN_TEMPLATES[tpl];
+    elnQuill.root.innerHTML = templateContent;
   }
   sel.value = '';
 };
@@ -206,14 +233,34 @@ async function loadStockDatalist() {
   }
 }
 
-window.openAddEln = () => {
+window.openAddEln = async () => {
   document.getElementById('ef_elnId').value = '';
   document.getElementById('ef_title').value = '';
   document.getElementById('ef_tags').value = '';
   document.getElementById('ef_linkedStock').value = '';
   document.getElementById('ef_linkedTask').value = '';
+  document.getElementById('elnTemplateSelect').value = '';
   document.getElementById('elnModalTitle').textContent = A.lang === 'tr' ? 'Yeni Kayıt' : 'New Entry';
   loadStockDatalist();
+  // Load custom templates into dropdown
+  try {
+    const snap = await getDocs(query(collection(db, 'elnTemplates'), where('labId', '==', A.userData.labId)));
+    A.customTemplates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const sel = document.getElementById('elnTemplateSelect');
+    sel.querySelectorAll('.custom-tpl-opt, .manage-tpl-opt').forEach(o => o.remove());
+    A.customTemplates.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = `custom_${t.id}`;
+      opt.textContent = `📝 ${t.name}`;
+      opt.className = 'custom-tpl-opt';
+      sel.appendChild(opt);
+    });
+    const mgOpt = document.createElement('option');
+    mgOpt.value = '__manage__';
+    mgOpt.textContent = A.lang === 'tr' ? '⚙ Şablonları Yönet...' : '⚙ Manage Templates...';
+    mgOpt.className = 'manage-tpl-opt';
+    sel.appendChild(mgOpt);
+  } catch {}
   openOverlay('elnModal');
   setTimeout(() => initQuillEditor(''), 100);
 };

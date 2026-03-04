@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════
 import {
   db, collection, doc, addDoc, getDoc, updateDoc, deleteDoc,
-  query, orderBy, onSnapshot, getDocs, Timestamp,
+  query, orderBy, where, onSnapshot, getDocs, Timestamp,
   sendEmail, auditLog, addDays, fmtDate, todayISO,
   capitalize, exportToExcel
 } from './firebase.js';
@@ -587,7 +587,11 @@ window.saveEditStock = async () => {
   const usnap = await getDoc(doc(db, 'users', respUid));
   const respName = usnap.exists() ? usnap.data().name : '';
 
-  await updateDoc(doc(db, 'stocks', id), {
+  // Version tracking — save previous values before updating
+  const prevSnap = await getDoc(doc(db, 'stocks', id));
+  const prevData = prevSnap.exists() ? prevSnap.data() : {};
+
+  const newData = {
     stockCode:  document.getElementById('esf_code').value.trim(),
     species:    document.getElementById('esf_species').value,
     lineage:    document.getElementById('esf_lineage').value,
@@ -598,9 +602,31 @@ window.saveEditStock = async () => {
     responsible: respName,
     responsibleUid: respUid,
     updatedAt:  Timestamp.now(),
+  };
+
+  // Build change diff for versioning
+  const changes = {};
+  const trackFields = ['stockCode','species','lineage','genotype','climate','status','notes','responsible'];
+  trackFields.forEach(f => {
+    if (String(prevData[f] || '') !== String(newData[f] || '')) {
+      changes[f] = { old: prevData[f] || '', new: newData[f] || '' };
+    }
   });
 
-  await auditLog('EDIT_STOCK', `Edited stock ${document.getElementById('esf_code').value}`,
+  // Only save version if there are actual changes
+  if (Object.keys(changes).length > 0) {
+    const existingVersions = prevData.versionHistory || [];
+    newData.versionHistory = [...existingVersions, {
+      changes,
+      changedBy: A.userData.name,
+      changedByUid: A.user.uid,
+      timestamp: Timestamp.now(),
+    }];
+  }
+
+  await updateDoc(doc(db, 'stocks', id), newData);
+
+  await auditLog('EDIT_STOCK', `Edited stock ${newData.stockCode}${Object.keys(changes).length > 0 ? ` (changed: ${Object.keys(changes).join(', ')})` : ''}`,
     A.user.uid, A.userData.name, A.userData.labId);
   closeOverlay('editStockModal');
   toast(t('saved'), 'ok');
@@ -658,6 +684,10 @@ window.openStockDetail = async (id) => {
         <span class="badge ${bc}" style="margin-top:4px">${bl}</span>
       </div>
       ${s.notes?`<div class="span2"><div class="fl">Notlar / Notes</div><div style="margin-top:4px;font-size:13px;color:var(--text2)">${s.notes}</div></div>`:''}
+    </div>
+    <div class="row" style="gap:8px;margin-bottom:12px">
+      <button class="btn btn-secondary btn-sm" onclick="showVersionHistory('stocks','${id}')">📝 ${A.lang==='tr'?'Değişiklik Geçmişi':'Change History'}</button>
+      ${(s.versionHistory||[]).length > 0 ? `<span class="dim-cell" style="font-size:11px">${(s.versionHistory||[]).length} ${A.lang==='tr'?'değişiklik':'changes'}</span>` : ''}
     </div>
     <div class="card-title">${A.lang==='tr'?'Durum Geçmişi':'Status History'}</div>
     <div class="tbl-wrap">${history || `<div class="empty-state"><div class="empty-text">${t('noData')}</div></div>`}</div>`;

@@ -85,8 +85,20 @@ const T = {
     topDashboard: 'Genel Bakış',
     topSystem: 'Sistem Yönetimi',
     topTurkeyStocks: 'Drosophila Türkiye Stocks',
+    topImport: 'Veri İçe Aktar',
+    topAllUsers: 'Tüm Kullanıcılar',
+    topGlobalLog: 'Global Aktivite Kaydı',
     niDashboard: 'Genel Bakış',
-    niSystem: 'Sistem Yönetimi',
+    niSystem: 'Lab Yönetimi',
+    niImport: 'Veri İçe Aktar',
+    niAllUsers: 'Tüm Kullanıcılar',
+    niGlobalLog: 'Global Aktivite',
+    // Import
+    importSuccess: 'İçe aktarma başarılı!',
+    importErr: 'İçe aktarma hatası.',
+    importRows: 'satır içe aktarıldı.',
+    // Versioning
+    versionSaved: 'Önceki değerler kaydedildi.',
   },
   en: {
     tagline: 'Functional & Evolutionary Genetics Lab — Information Management System',
@@ -132,8 +144,18 @@ const T = {
     topDashboard: 'Overview',
     topSystem: 'System Management',
     topTurkeyStocks: 'Drosophila Turkey Stocks',
+    topImport: 'Data Import',
+    topAllUsers: 'All Users',
+    topGlobalLog: 'Global Activity Log',
     niDashboard: 'Overview',
-    niSystem: 'System Management',
+    niSystem: 'Lab Management',
+    niImport: 'Data Import',
+    niAllUsers: 'All Users',
+    niGlobalLog: 'Global Activity',
+    importSuccess: 'Import successful!',
+    importErr: 'Import error.',
+    importRows: 'rows imported.',
+    versionSaved: 'Previous values saved.',
   }
 };
 
@@ -183,6 +205,10 @@ function applyStaticTranslations() {
     'ni-admin-lbl': 'niAdmin',
     'ni-settings-lbl': 'niSettings',
     'ni-actlog-lbl': 'niActivityLog',
+    'ni-import-lbl': 'niImport',
+    'ni-system-lbl': 'niSystem',
+    'ni-allusers-lbl': 'niAllUsers',
+    'ni-globallog-lbl': 'niGlobalLog',
     'ni-logout-lbl': 'niLogout',
     'settingsModeLabel': 'settingsMode',
     'settingsBannerText': 'settingsBanner',
@@ -339,18 +365,24 @@ async function bootDashboard() {
   window.ROLE_DEFAULTS = ROLE_DEFAULTS;
   window.ALL_PERMS = ALL_PERMS;
 
-  // Admin-only elements
-  document.getElementById('adminNavGroup').style.display = isAdmin ? 'block' : 'none';
-  document.getElementById('ni-admin').style.display = isAdmin ? 'flex' : 'none';
-  document.getElementById('ni-settings').style.display = isAdmin ? 'flex' : 'none';
-  document.getElementById('ni-activitylog').style.display = isAdmin ? 'flex' : 'none';
-  document.getElementById('settingsModeBtn').style.display = isAdmin ? 'flex' : 'none';
+  // Admin-only elements (Lab Admin panel)
+  const showAdmin = isAdmin || ownerFlag;
+  document.getElementById('adminNavGroup').style.display = showAdmin ? 'block' : 'none';
+  document.getElementById('ni-admin').style.display = showAdmin ? 'flex' : 'none';
+  document.getElementById('ni-settings').style.display = showAdmin ? 'flex' : 'none';
+  document.getElementById('ni-activitylog').style.display = showAdmin ? 'flex' : 'none';
+  document.getElementById('ni-import').style.display = showAdmin ? 'flex' : 'none';
+  document.getElementById('settingsModeBtn').style.display = showAdmin ? 'flex' : 'none';
 
-  // System owner-only elements
+  // System owner-only elements (separate section)
   const sysNav = document.getElementById('systemNavGroup');
   const sysItem = document.getElementById('ni-system');
+  const allUsersItem = document.getElementById('ni-allusers');
+  const globalLogItem = document.getElementById('ni-globallog');
   if (sysNav) sysNav.style.display = ownerFlag ? 'block' : 'none';
   if (sysItem) sysItem.style.display = ownerFlag ? 'flex' : 'none';
+  if (allUsersItem) allUsersItem.style.display = ownerFlag ? 'flex' : 'none';
+  if (globalLogItem) globalLogItem.style.display = ownerFlag ? 'flex' : 'none';
 
   // Add stock button - role-based
   const canAdd = hasPermission(A.userData, 'addStock');
@@ -422,6 +454,7 @@ window.nav = (section) => {
     turkeyStocks: 'topTurkeyStocks',
     admin: 'topAdmin', settings: 'topSettings',
     activitylog: 'topActivityLog', system: 'topSystem',
+    import: 'topImport', allusers: 'topAllUsers', globallog: 'topGlobalLog',
   };
   document.getElementById('topbarTitle').textContent = t(titleMap[section] || section);
 
@@ -451,6 +484,9 @@ function renderSection() {
     settings:    renderSettings,
     activitylog: renderActivityLog,
     system:      renderSystemPanel,
+    import:      renderImportPanel,
+    allusers:    renderAllUsersPanel,
+    globallog:   renderGlobalActivityLog,
   };
   const fn = renders[A.section];
   if (fn) fn();
@@ -1195,6 +1231,676 @@ window.requestTurkeyStock = async (stockCode, email, name, labName) => {
   });
   toast(ok ? t('emailSent') : t('emailErr'), ok ? 'ok' : 'err');
   await auditLog('TURKEY_STOCK_REQUEST', `Requested ${stockCode} from ${labName}/${name}`, A.user.uid, A.userData.name, A.userData.labId);
+};
+
+// ── IMPORT PANEL ─────────────────────────────
+function renderImportPanel() {
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="alert alert-blue" style="margin-bottom:20px">
+      <div class="alert-icon">📥</div>
+      <div class="alert-body">
+        <div class="alert-title">${A.lang==='tr'?'Veri İçe Aktarma':'Data Import'}</div>
+        <div class="alert-msg">${A.lang==='tr'
+          ?'Excel (.xlsx/.xls) veya CSV dosyasından toplu veri yükleyebilirsiniz. Sütun eşleştirme ile verileri doğru alanlara aktarın.'
+          :'Import bulk data from Excel (.xlsx/.xls) or CSV files. Map columns to the correct fields.'}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div class="card" style="cursor:pointer;text-align:center;padding:32px" onclick="openExcelImport('stock')">
+        <div style="font-size:40px;margin-bottom:12px">🔬</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">${A.lang==='tr'?'Stok İçe Aktar':'Import Stocks'}</div>
+        <div class="dim-cell" style="font-size:12px">${A.lang==='tr'?'Drosophila stok verilerini Excel\'den yükleyin':'Load Drosophila stock data from Excel'}</div>
+      </div>
+      <div class="card" style="cursor:pointer;text-align:center;padding:32px" onclick="openExcelImport('chemical')">
+        <div style="font-size:40px;margin-bottom:12px">🧪</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">${A.lang==='tr'?'Kimyasal İçe Aktar':'Import Chemicals'}</div>
+        <div class="dim-cell" style="font-size:12px">${A.lang==='tr'?'Kimyasal envanter verilerini Excel\'den yükleyin':'Load chemical inventory from Excel'}</div>
+      </div>
+      <div class="card" style="cursor:pointer;text-align:center;padding:32px" onclick="openExcelImport('eln')">
+        <div style="font-size:40px;margin-bottom:12px">📓</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">${A.lang==='tr'?'ELN İçe Aktar':'Import ELN'}</div>
+        <div class="dim-cell" style="font-size:12px">${A.lang==='tr'?'Lab defteri kayıtlarını Excel\'den yükleyin':'Load lab notebook entries from Excel'}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <div class="card-title">📋 ${A.lang==='tr'?'Şablon İndir':'Download Template'}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-secondary btn-sm" onclick="downloadImportTemplate('stock')">🔬 Stok Şablonu</button>
+        <button class="btn btn-secondary btn-sm" onclick="downloadImportTemplate('chemical')">🧪 Kimyasal Şablonu</button>
+        <button class="btn btn-secondary btn-sm" onclick="downloadImportTemplate('eln')">📓 ELN Şablonu</button>
+      </div>
+    </div>`;
+}
+
+// Excel Import Logic
+const IMPORT_FIELDS = {
+  stock: [
+    { key: 'stockCode', label: 'Stok Kodu / Stock Code', required: true },
+    { key: 'species', label: 'Tür / Species', required: false },
+    { key: 'genotype', label: 'Genotip / Genotype', required: false },
+    { key: 'lineage', label: 'Soy / Lineage', required: false },
+    { key: 'center', label: 'Merkez / Center', required: false },
+    { key: 'climate', label: 'Sıcaklık / Temp (°C)', required: false },
+    { key: 'status', label: 'Durum / Status', required: false },
+    { key: 'stockDate', label: 'Stok Günü / Stock Date', required: false },
+    { key: 'removalDate', label: 'Ergin Atımı / Removal Date', required: false },
+    { key: 'responsible', label: 'Sorumlu / Responsible', required: false },
+    { key: 'notes', label: 'Notlar / Notes', required: false },
+  ],
+  chemical: [
+    { key: 'name', label: 'Kimyasal Adı / Name', required: true },
+    { key: 'casNo', label: 'CAS No', required: false },
+    { key: 'ghsClasses', label: 'GHS Sınıfları / Classes', required: false },
+    { key: 'amount', label: 'Miktar / Amount', required: false },
+    { key: 'unit', label: 'Birim / Unit', required: false },
+    { key: 'location', label: 'Konum / Location', required: false },
+    { key: 'expiryDate', label: 'Son Kullanma / Expiry', required: false },
+    { key: 'responsible', label: 'Sorumlu / Responsible', required: false },
+    { key: 'notes', label: 'Notlar / Notes', required: false },
+  ],
+  eln: [
+    { key: 'title', label: 'Başlık / Title', required: true },
+    { key: 'content', label: 'İçerik / Content', required: false },
+    { key: 'tags', label: 'Etiketler / Tags', required: false },
+    { key: 'linkedStock', label: 'Bağlı Stok / Linked Stock', required: false },
+  ],
+};
+
+let importState = { step: 1, data: [], headers: [], mapping: {}, target: 'stock' };
+
+window.openExcelImport = (target) => {
+  importState = { step: 1, data: [], headers: [], mapping: {}, target };
+  document.getElementById('imp_target').value = target;
+  const titles = { stock: '🔬 Stok İçe Aktar', chemical: '🧪 Kimyasal İçe Aktar', eln: '📓 ELN İçe Aktar' };
+  document.getElementById('importModalTitle').textContent = titles[target] || 'Import';
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('importStep3').style.display = 'none';
+  document.getElementById('importNextBtn').style.display = 'none';
+  document.getElementById('importBackBtn').style.display = 'none';
+  document.getElementById('importDoBtn').style.display = 'none';
+  document.getElementById('importFileInfo').style.display = 'none';
+  document.getElementById('importFileInput').value = '';
+  openOverlay('excelImportModal');
+};
+
+window.handleImportFile = (file) => {
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+    toast(A.lang==='tr'?'Desteklenmeyen dosya formatı':'Unsupported file format', 'err');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      if (json.length < 2) { toast(A.lang==='tr'?'Dosyada veri yok':'No data in file', 'err'); return; }
+      importState.headers = json[0].map(h => String(h || '').trim());
+      importState.data = json.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''));
+      document.getElementById('importFileName').textContent = file.name;
+      document.getElementById('importRowCount').textContent = `${importState.data.length} ${A.lang==='tr'?'satır bulundu':'rows found'}`;
+      document.getElementById('importFileInfo').style.display = '';
+      document.getElementById('importNextBtn').style.display = '';
+      // Auto-map columns
+      autoMapColumns();
+    } catch (err) {
+      toast('Dosya okunamadı: ' + err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+};
+
+function autoMapColumns() {
+  const fields = IMPORT_FIELDS[importState.target] || [];
+  const headers = importState.headers.map(h => h.toLowerCase());
+  importState.mapping = {};
+  fields.forEach(f => {
+    const idx = headers.findIndex(h =>
+      h.includes(f.key.toLowerCase()) ||
+      h.includes(f.label.split('/')[0].trim().toLowerCase()) ||
+      h.includes(f.label.split('/')[1]?.trim().toLowerCase() || '___')
+    );
+    if (idx >= 0) importState.mapping[f.key] = idx;
+  });
+}
+
+window.importNext = () => {
+  if (importState.step === 1) {
+    importState.step = 2;
+    showImportStep2();
+  } else if (importState.step === 2) {
+    // Validate required mappings
+    const fields = IMPORT_FIELDS[importState.target] || [];
+    const missing = fields.filter(f => f.required && importState.mapping[f.key] === undefined);
+    if (missing.length > 0) {
+      toast(`${A.lang==='tr'?'Zorunlu alanları eşleştirin':'Map required fields'}: ${missing.map(f=>f.label).join(', ')}`, 'err');
+      return;
+    }
+    importState.step = 3;
+    showImportStep3();
+  }
+};
+
+window.importBack = () => {
+  if (importState.step === 3) { importState.step = 2; showImportStep2(); }
+  else if (importState.step === 2) { importState.step = 1; showImportStep1(); }
+};
+
+function showImportStep1() {
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('importStep3').style.display = 'none';
+  document.getElementById('importNextBtn').style.display = importState.data.length > 0 ? '' : 'none';
+  document.getElementById('importBackBtn').style.display = 'none';
+  document.getElementById('importDoBtn').style.display = 'none';
+}
+
+function showImportStep2() {
+  document.getElementById('importStep1').style.display = 'none';
+  document.getElementById('importStep2').style.display = '';
+  document.getElementById('importStep3').style.display = 'none';
+  document.getElementById('importNextBtn').style.display = '';
+  document.getElementById('importBackBtn').style.display = '';
+  document.getElementById('importDoBtn').style.display = 'none';
+
+  const fields = IMPORT_FIELDS[importState.target] || [];
+  const grid = document.getElementById('importMappingGrid');
+  grid.innerHTML = `<table><thead><tr>
+    <th>${A.lang==='tr'?'Sistem Alanı':'System Field'}</th>
+    <th>${A.lang==='tr'?'Excel Sütunu':'Excel Column'}</th>
+    <th>${A.lang==='tr'?'Örnek Veri':'Sample Data'}</th>
+  </tr></thead><tbody>
+  ${fields.map(f => {
+    const options = importState.headers.map((h, i) => `<option value="${i}" ${importState.mapping[f.key]===i?'selected':''}>${h}</option>`).join('');
+    const sampleIdx = importState.mapping[f.key];
+    const sample = sampleIdx !== undefined ? (importState.data[0]?.[sampleIdx] ?? '—') : '—';
+    return `<tr>
+      <td class="${f.required?'fw-bold':''}">${f.required?'* ':''}${f.label}</td>
+      <td><select class="fc btn-sm" style="width:200px" onchange="updateImportMapping('${f.key}',this.value)">
+        <option value="">— ${A.lang==='tr'?'Eşleştirme Yok':'Not Mapped'} —</option>
+        ${options}
+      </select></td>
+      <td class="dim-cell" style="font-size:12px" id="impSample_${f.key}">${sample}</td>
+    </tr>`;
+  }).join('')}
+  </tbody></table>`;
+}
+
+window.updateImportMapping = (key, val) => {
+  if (val === '') delete importState.mapping[key];
+  else importState.mapping[key] = parseInt(val);
+  const sampleEl = document.getElementById(`impSample_${key}`);
+  if (sampleEl) {
+    const idx = importState.mapping[key];
+    sampleEl.textContent = idx !== undefined ? (importState.data[0]?.[idx] ?? '—') : '—';
+  }
+};
+
+function showImportStep3() {
+  document.getElementById('importStep1').style.display = 'none';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('importStep3').style.display = '';
+  document.getElementById('importNextBtn').style.display = 'none';
+  document.getElementById('importBackBtn').style.display = '';
+  document.getElementById('importDoBtn').style.display = '';
+
+  const fields = IMPORT_FIELDS[importState.target].filter(f => importState.mapping[f.key] !== undefined);
+  const preview = importState.data.slice(0, 5);
+
+  document.getElementById('importPreviewInfo').innerHTML = `
+    <div class="alert-icon">ℹ</div><div class="alert-body">
+    <div class="alert-msg">${importState.data.length} ${A.lang==='tr'?'satır içe aktarılacak. İlk 5 satır önizleme:':'rows will be imported. First 5 rows preview:'}</div>
+    </div>`;
+
+  document.getElementById('importPreviewTable').innerHTML = `<table><thead><tr>
+    ${fields.map(f => `<th style="font-size:11px">${f.label.split('/')[0].trim()}</th>`).join('')}
+  </tr></thead><tbody>
+    ${preview.map(row => `<tr>${fields.map(f => `<td class="dim-cell" style="font-size:11px">${formatImportCell(row[importState.mapping[f.key]])}</td>`).join('')}</tr>`).join('')}
+  </tbody></table>`;
+}
+
+function formatImportCell(val) {
+  if (val === undefined || val === null) return '—';
+  if (val instanceof Date) return val.toISOString().split('T')[0];
+  return String(val).slice(0, 60);
+}
+
+window.executeImport = async () => {
+  const target = importState.target;
+  const fields = IMPORT_FIELDS[target];
+  const collName = target === 'stock' ? 'stocks' : target === 'chemical' ? 'chemicals' : 'eln';
+  const btn = document.getElementById('importDoBtn');
+  btn.disabled = true;
+  btn.textContent = A.lang === 'tr' ? '⏳ İçe aktarılıyor...' : '⏳ Importing...';
+
+  let success = 0, errors = 0;
+  for (const row of importState.data) {
+    try {
+      const data = { labId: A.userData.labId, labName: A.userData.labName, createdAt: Timestamp.now(), updatedAt: Timestamp.now() };
+      fields.forEach(f => {
+        const idx = importState.mapping[f.key];
+        if (idx === undefined) return;
+        let val = row[idx];
+        if (val instanceof Date) val = val.toISOString().split('T')[0];
+        if (val !== undefined && val !== null && val !== '') {
+          if (f.key === 'climate') val = parseInt(val) || 25;
+          if (f.key === 'ghsClasses' && typeof val === 'string') val = val.split(',').map(s=>s.trim()).filter(Boolean);
+          if (f.key === 'tags' && typeof val === 'string') val = val.split(',').map(s=>s.trim()).filter(Boolean);
+          data[f.key] = val;
+        }
+      });
+      // Defaults
+      if (target === 'stock') {
+        data.status = data.status || 'Active';
+        data.responsible = data.responsible || A.userData.name;
+        data.responsibleUid = A.user.uid;
+        data.responsibleEmail = A.user.email;
+      }
+      if (target === 'chemical') {
+        data.responsible = data.responsible || A.userData.name;
+        data.responsibleUid = A.user.uid;
+      }
+      if (target === 'eln') {
+        data.authorUid = A.user.uid;
+        data.authorName = A.userData.name;
+        data.content = data.content || '';
+        data.versions = [];
+      }
+      await addDoc(collection(db, collName), data);
+      success++;
+    } catch (e) { errors++; }
+  }
+  await auditLog('IMPORT', `Imported ${success} ${target}(s) from Excel (${errors} errors)`, A.user.uid, A.userData.name, A.userData.labId);
+  btn.disabled = false;
+  btn.textContent = '📥 İçe Aktar';
+  closeOverlay('excelImportModal');
+  toast(`${success} ${t('importRows')} ${errors > 0 ? `(${errors} hata)` : ''}`, errors > 0 ? 'warn' : 'ok');
+  if (A.section === 'import') renderImportPanel();
+};
+
+window.downloadImportTemplate = (target) => {
+  const fields = IMPORT_FIELDS[target] || [];
+  const headers = fields.map(f => f.label);
+  const ws = XLSX.utils.aoa_to_sheet([headers]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Template');
+  XLSX.writeFile(wb, `FEGLIMS_${target}_template.xlsx`);
+};
+
+// ── ALL USERS PANEL (Owner only) ─────────────
+function renderAllUsersPanel() {
+  if (!A.isOwner) { nav('dashboard'); return; }
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="row" style="margin-bottom:16px;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div class="row" style="gap:8px">
+        <select class="fc" id="auLabFilter" style="width:200px" onchange="loadAllUsersPanel()">
+          <option value="">${A.lang==='tr'?'Tüm Laboratuvarlar':'All Labs'}</option>
+        </select>
+        <select class="fc" id="auRoleFilter" style="width:160px" onchange="loadAllUsersPanel()">
+          <option value="">${A.lang==='tr'?'Tüm Roller':'All Roles'}</option>
+          <option value="admin">Admin</option><option value="pi">PI</option>
+          <option value="senior">Senior</option><option value="researcher">Researcher</option>
+          <option value="student">Student</option><option value="pending">Pending</option>
+        </select>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="exportAllUsers()">📊 Excel</button>
+    </div>
+    <div id="allUsersWrap"></div>`;
+  loadAllUsersLabFilter();
+  loadAllUsersPanel();
+}
+
+async function loadAllUsersLabFilter() {
+  const snap = await getDocs(collection(db, 'labs'));
+  const sel = document.getElementById('auLabFilter');
+  if (!sel) return;
+  snap.docs.forEach(d => {
+    const lab = d.data();
+    sel.innerHTML += `<option value="${d.id}">${lab.name}</option>`;
+  });
+}
+
+window.loadAllUsersPanel = async () => {
+  const labF = document.getElementById('auLabFilter')?.value || '';
+  const roleF = document.getElementById('auRoleFilter')?.value || '';
+  const snap = await getDocs(collection(db, 'users'));
+  let users = snap.docs.map(d => ({uid: d.id, ...d.data()}));
+  if (labF) users = users.filter(u => u.labId === labF);
+  if (roleF) users = users.filter(u => u.role === roleF);
+
+  const el = document.getElementById('allUsersWrap');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="dim-cell" style="font-size:12px;margin-bottom:8px">${users.length} ${A.lang==='tr'?'kullanıcı':'users'}</div>
+    <div class="tbl-wrap"><table><thead><tr>
+      <th>${A.lang==='tr'?'Ad':'Name'}</th><th>E-posta</th>
+      <th>${A.lang==='tr'?'Lab':'Lab'}</th><th>${A.lang==='tr'?'Rol':'Role'}</th>
+      <th>ORCID</th><th>${A.lang==='tr'?'Kayıt Tarihi':'Registered'}</th>
+    </tr></thead><tbody>
+    ${users.map(u => `<tr>
+      <td class="fw-bold">${u.name||'—'}</td>
+      <td class="dim-cell" style="font-size:12px">${u.email||'—'}</td>
+      <td class="dim-cell">${u.labName||'—'}</td>
+      <td><span class="badge b-${u.role||'pending'}">${ROLES[u.role]||u.role}</span></td>
+      <td class="mono-cell" style="font-size:11px">${u.orcid||'—'}</td>
+      <td class="dim-cell" style="font-size:12px">${fmtDateTime(u.createdAt, A.lang)}</td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+};
+
+window.exportAllUsers = async () => {
+  const snap = await getDocs(collection(db, 'users'));
+  const users = snap.docs.map(d => d.data());
+  exportToExcel(users.map(u => ({
+    'Ad/Name': u.name, 'E-posta': u.email, 'Lab': u.labName,
+    'Rol/Role': u.role, 'ORCID': u.orcid || '',
+  })), 'FEGLIMS_AllUsers');
+};
+
+// ── GLOBAL ACTIVITY LOG (Owner only) ─────────
+function renderGlobalActivityLog() {
+  if (!A.isOwner) { nav('dashboard'); return; }
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="row" style="margin-bottom:16px;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <select class="fc" id="glLabFilter" style="width:200px" onchange="loadGlobalLog()">
+          <option value="">${A.lang==='tr'?'Tüm Lablar':'All Labs'}</option>
+        </select>
+        <select class="fc" id="glActionFilter" style="width:180px" onchange="loadGlobalLog()">
+          <option value="">${A.lang==='tr'?'Tüm İşlemler':'All Actions'}</option>
+          <option value="ADD_STOCK">Add Stock</option>
+          <option value="STATUS_CHANGE">Status Change</option>
+          <option value="APPROVE">Approve</option>
+          <option value="IMPORT">Import</option>
+          <option value="DELETE">Delete</option>
+        </select>
+        <input type="date" class="fc" id="glDateFilter" style="width:160px" onchange="loadGlobalLog()">
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="exportGlobalLog()">📊 Excel</button>
+    </div>
+    <div id="globalLogWrap"></div>`;
+  loadGlobalLabFilter();
+  loadGlobalLog();
+}
+
+async function loadGlobalLabFilter() {
+  const snap = await getDocs(collection(db, 'labs'));
+  const sel = document.getElementById('glLabFilter');
+  if (!sel) return;
+  snap.docs.forEach(d => {
+    sel.innerHTML += `<option value="${d.id}">${d.data().name}</option>`;
+  });
+}
+
+window.loadGlobalLog = async () => {
+  const labF = document.getElementById('glLabFilter')?.value || '';
+  const actionF = document.getElementById('glActionFilter')?.value || '';
+  const dateF = document.getElementById('glDateFilter')?.value || '';
+
+  const snap = await getDocs(query(collection(db, 'auditLog'), orderBy('timestamp', 'desc')));
+  let logs = snap.docs.map(d => d.data());
+  if (labF) logs = logs.filter(l => l.labId === labF);
+  if (actionF) logs = logs.filter(l => l.action === actionF);
+  if (dateF) logs = logs.filter(l => l.timestamp?.toDate?.()?.toISOString?.()?.split('T')[0] === dateF);
+  logs = logs.slice(0, 100);
+
+  const el = document.getElementById('globalLogWrap');
+  if (!el) return;
+  const iconMap = { 'ADD_STOCK':{ i:'🔬',c:'var(--accent)' }, 'STATUS_CHANGE':{ i:'⟳',c:'var(--amber)' }, 'APPROVE':{ i:'✅',c:'var(--accent)' }, 'ADD_CHEM':{ i:'🧪',c:'var(--blue)' }, 'IMPORT':{ i:'📥',c:'var(--blue)' }, 'DELETE':{ i:'🗑',c:'var(--red)' } };
+  el.innerHTML = logs.length === 0
+    ? `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${t('noData')}</div></div>`
+    : logs.map(l => {
+      const ico = iconMap[l.action] || { i:'•', c:'var(--text3)' };
+      return `<div class="log-entry">
+        <div class="log-icon" style="background:${ico.c}20;color:${ico.c}">${ico.i}</div>
+        <div class="log-body">
+          <div class="log-action">${l.action} <span class="badge" style="font-size:10px;background:var(--surface3)">${l.labId||'—'}</span></div>
+          <div class="log-detail">${l.detail} — <span style="color:var(--accent)">${l.userName}</span></div>
+        </div>
+        <div class="log-time">${fmtDateTime(l.timestamp, A.lang)}</div>
+      </div>`;
+    }).join('');
+};
+
+window.exportGlobalLog = async () => {
+  const snap = await getDocs(query(collection(db, 'auditLog'), orderBy('timestamp', 'desc')));
+  exportToExcel(snap.docs.map(d => d.data()).map(l => ({
+    'İşlem': l.action, 'Detay': l.detail, 'Kullanıcı': l.userName,
+    'Lab': l.labId, 'Tarih': fmtDateTime(l.timestamp, A.lang),
+  })), 'FEGLIMS_GlobalActivityLog');
+};
+
+// ── GOOGLE CALENDAR SYNC / ICS EXPORT ────────
+window.openGoogleCalSync = () => {
+  const now = new Date();
+  const from = new Date(); from.setMonth(from.getMonth() - 1);
+  const to = new Date(); to.setMonth(to.getMonth() + 3);
+  document.getElementById('gcal_from').value = from.toISOString().split('T')[0];
+  document.getElementById('gcal_to').value = to.toISOString().split('T')[0];
+  document.getElementById('gcalStatus').innerHTML = '';
+  openOverlay('gcalSyncModal');
+};
+
+window.exportToGoogleCalendar = async () => {
+  const fromDate = document.getElementById('gcal_from').value;
+  const toDate = document.getElementById('gcal_to').value;
+  const inclRemoval = document.getElementById('gcal_removal').checked;
+  const inclTransfer = document.getElementById('gcal_transfer').checked;
+  const inclManual = document.getElementById('gcal_manual').checked;
+  const inclTasks = document.getElementById('gcal_tasks').checked;
+
+  let events = [];
+
+  // Manual events
+  if (inclManual) {
+    const snap = await getDocs(query(collection(db, 'events'), where('labId','==', A.userData.labId)));
+    snap.docs.forEach(d => {
+      const e = d.data();
+      if (e.eventDate >= fromDate && e.eventDate <= toDate) {
+        events.push({ title: e.title, date: e.eventDate, time: e.time || '', desc: e.description || '', type: e.type || 'other' });
+      }
+    });
+  }
+
+  // Stock events
+  if (inclRemoval || inclTransfer) {
+    const snap = await getDocs(query(collection(db, 'stocks'), where('labId','==', A.userData.labId)));
+    snap.docs.forEach(d => {
+      const s = d.data();
+      if (s.status === 'Lost') return;
+      if (inclRemoval && s.removalDate >= fromDate && s.removalDate <= toDate) {
+        events.push({ title: `Ergin Atımı: ${s.stockCode}`, date: s.removalDate, time: '', desc: `${s.genotype || ''} - ${s.responsible || ''}`, type: 'parent_removal' });
+      }
+      if (inclTransfer && s.nextTransferDate >= fromDate && s.nextTransferDate <= toDate) {
+        events.push({ title: `Transfer: ${s.stockCode}`, date: s.nextTransferDate, time: '', desc: `${s.genotype || ''} - ${s.responsible || ''}`, type: 'stock_transfer' });
+      }
+    });
+  }
+
+  // Tasks
+  if (inclTasks) {
+    const snap = await getDocs(query(collection(db, 'tasks'), where('labId','==', A.userData.labId)));
+    snap.docs.forEach(d => {
+      const t = d.data();
+      if (t.dueDate && t.dueDate >= fromDate && t.dueDate <= toDate && t.status !== 'completed' && t.status !== 'cancelled') {
+        events.push({ title: `Görev: ${t.title}`, date: t.dueDate, time: '', desc: t.description || '', type: 'task' });
+      }
+    });
+  }
+
+  if (events.length === 0) { toast(A.lang==='tr'?'Aktarılacak etkinlik yok':'No events to export', 'warn'); return; }
+
+  // Generate ICS
+  let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//FEGLIMS//Calendar//TR\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n';
+  events.forEach(e => {
+    const dtStart = e.date.replace(/-/g, '');
+    const uid = `${dtStart}-${Math.random().toString(36).slice(2,8)}@feglims`;
+    ics += `BEGIN:VEVENT\r\nDTSTART;VALUE=DATE:${dtStart}\r\nSUMMARY:${escapeICS(e.title)}\r\nDESCRIPTION:${escapeICS(e.desc)}\r\nUID:${uid}\r\nEND:VEVENT\r\n`;
+  });
+  ics += 'END:VCALENDAR\r\n';
+
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `FEGLIMS_Calendar_${fromDate}_${toDate}.ics`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+
+  document.getElementById('gcalStatus').innerHTML = `<div class="alert alert-green"><div class="alert-icon">✅</div><div class="alert-body"><div class="alert-msg">${events.length} ${A.lang==='tr'?'etkinlik .ICS dosyasına aktarıldı. Google Calendar\'da "Import" ile yükleyin.':'events exported to .ICS file. Import it in Google Calendar.'}</div></div></div>`;
+  toast(`${events.length} ${A.lang==='tr'?'etkinlik aktarıldı':'events exported'}`, 'ok');
+};
+
+window.syncGoogleCalendar = () => {
+  // Opens Google Calendar import page
+  window.open('https://calendar.google.com/calendar/r/settings/export', '_blank');
+  toast(A.lang==='tr'?'Önce .ICS dosyasını indirin, sonra Google Calendar\'da içe aktarın':'First download the .ICS file, then import it in Google Calendar', 'info');
+};
+
+function escapeICS(str) {
+  return (str || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+// ── ELN TEMPLATE MANAGER ─────────────────────
+window.openElnTemplateManager = () => {
+  loadCustomTemplates();
+  openOverlay('elnTemplateManagerModal');
+};
+
+async function loadCustomTemplates() {
+  const snap = await getDocs(query(collection(db, 'elnTemplates'), where('labId', '==', A.userData.labId)));
+  A.customTemplates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderTemplateManagerList();
+  updateElnTemplateDropdown();
+}
+
+function renderTemplateManagerList() {
+  const el = document.getElementById('tplManagerList');
+  if (!el) return;
+  const builtIn = [
+    { name: '🧪 Deney Protokolü', key: 'experiment', builtin: true },
+    { name: '🔬 Gözlem Notu', key: 'observation', builtin: true },
+    { name: '🪰 Çaprazlama', key: 'crossing', builtin: true },
+    { name: '✂ CRISPR Deneyi', key: 'crispr', builtin: true },
+  ];
+  const all = [...builtIn, ...A.customTemplates.map(t => ({ name: t.name, key: t.id, builtin: false }))];
+
+  el.innerHTML = all.length === 0 ? `<div class="dim-cell">${t('noData')}</div>` : `
+    <div class="tbl-wrap"><table><thead><tr>
+      <th>${A.lang==='tr'?'Şablon Adı':'Template Name'}</th>
+      <th>${A.lang==='tr'?'Tür':'Type'}</th>
+      <th></th>
+    </tr></thead><tbody>
+    ${all.map(t => `<tr>
+      <td class="fw-bold">${t.name}</td>
+      <td>${t.builtin ? '<span class="badge" style="background:var(--surface3)">Yerleşik / Built-in</span>' : '<span class="badge b-admin">Özel / Custom</span>'}</td>
+      <td>${!t.builtin ? `<button class="btn btn-red btn-xs" onclick="deleteCustomTemplate('${t.key}')">🗑</button>` : ''}</td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function updateElnTemplateDropdown() {
+  const sel = document.getElementById('elnTemplateSelect');
+  if (!sel) return;
+  // Keep built-in options, add custom ones
+  const customOpts = sel.querySelectorAll('.custom-tpl-opt');
+  customOpts.forEach(o => o.remove());
+  A.customTemplates.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = `custom_${t.id}`;
+    opt.textContent = `📝 ${t.name}`;
+    opt.className = 'custom-tpl-opt';
+    sel.appendChild(opt);
+  });
+  // Add "manage templates" option
+  let mgOpt = sel.querySelector('.manage-tpl-opt');
+  if (!mgOpt) {
+    mgOpt = document.createElement('option');
+    mgOpt.value = '__manage__';
+    mgOpt.textContent = A.lang === 'tr' ? '⚙ Şablonları Yönet...' : '⚙ Manage Templates...';
+    mgOpt.className = 'manage-tpl-opt';
+    sel.appendChild(mgOpt);
+  }
+}
+
+window.saveCustomTemplate = async () => {
+  const name = document.getElementById('tpl_name').value.trim();
+  const content = document.getElementById('tpl_content').value.trim();
+  if (!name || !content) { toast(t('required'), 'err'); return; }
+  await addDoc(collection(db, 'elnTemplates'), {
+    name, content, labId: A.userData.labId,
+    createdBy: A.user.uid, createdByName: A.userData.name,
+    createdAt: Timestamp.now()
+  });
+  document.getElementById('tpl_name').value = '';
+  document.getElementById('tpl_content').value = '';
+  toast(t('saved'), 'ok');
+  loadCustomTemplates();
+};
+
+window.deleteCustomTemplate = async (id) => {
+  if (!confirm(A.lang==='tr'?'Şablon silinsin mi?':'Delete template?')) return;
+  await deleteDoc(doc(db, 'elnTemplates', id));
+  toast(t('deleted'), 'info');
+  loadCustomTemplates();
+};
+
+// ── DATA VERSIONING ──────────────────────────
+window.showVersionHistory = async (collName, docId) => {
+  const snap = await getDoc(doc(db, collName, docId));
+  if (!snap.exists()) return;
+  const data = snap.data();
+  const versions = data.versionHistory || [];
+
+  const el = document.getElementById('versionHistoryBody');
+  if (versions.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div>
+      <div class="empty-text">${A.lang==='tr'?'Henüz versiyon geçmişi yok.':'No version history yet.'}</div></div>`;
+  } else {
+    el.innerHTML = `
+      <div class="dim-cell" style="font-size:12px;margin-bottom:12px">${versions.length} ${A.lang==='tr'?'önceki versiyon':'previous versions'}</div>
+      ${versions.slice().reverse().map((v, i) => `
+        <div class="card" style="margin-bottom:12px">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <span class="fw-bold" style="font-size:13px">#${versions.length - i} — ${fmtDateTime(v.timestamp, A.lang)}</span>
+            <span class="dim-cell" style="font-size:12px">${v.changedBy || '—'}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+            ${Object.entries(v.changes || {}).map(([key, change]) => `
+              <div style="padding:6px;background:var(--surface2);border-radius:var(--r)">
+                <div class="fl" style="font-size:10px">${key}</div>
+                <div style="color:var(--red);text-decoration:line-through;margin-top:2px">${change.old || '—'}</div>
+                <div style="color:var(--accent);margin-top:2px">${change.new || '—'}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}`;
+  }
+  openOverlay('versionHistoryModal');
+};
+
+// ── SETTINGS MODE FIX ────────────────────────
+// Override toggleSettingsMode with a functional version
+const originalToggle = window.toggleSettingsMode;
+window.toggleSettingsMode = () => {
+  originalToggle();
+  // When settings mode is active, show editable config panels inline
+  if (A.settingsMode && A.section !== 'settings') {
+    // Add settings banner action
+    const banner = document.getElementById('settingsBanner');
+    if (banner) {
+      banner.innerHTML = `
+        <span id="settingsBannerText">${t('settingsBanner')}</span>
+        <button class="btn btn-secondary btn-xs" onclick="nav('settings')" style="margin-left:10px">${A.lang==='tr'?'Ayarlara Git':'Go to Settings'}</button>
+      `;
+    }
+  }
 };
 
 // ── INIT ──────────────────────────────────────

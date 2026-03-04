@@ -135,5 +135,17 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && isLabAdmin();
       allow delete: if isSignedIn() && isLabAdmin();
     }
+
+    // ELN Templates — lab-scoped
+    match /elnTemplates/{templateId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow delete: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        isLabAdmin() ||
+        isOwner()
+      );
+    }
   }
 }

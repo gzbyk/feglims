@@ -1251,3 +1251,67 @@ body.settings-mode .sm-edit-btn:hover { background: rgba(255,193,66,.2); }
 [data-theme="dark"] .ql-snow .ql-picker-options { background: var(--surface); border-color: var(--border); }
 [data-theme="dark"] .ql-editor.ql-blank::before { color: var(--text3); }
 .ql-editor { min-height: 180px; font-family: var(--body); font-size: 14px; line-height: 1.7; }
+
+/* ═══════════════════════════════════════
+   IMPORT & VERSIONING
+═══════════════════════════════════════ */
+#importDropZone:hover { border-color: var(--accent) !important; background: var(--accent-bg) !important; }
+
+/* Alert styles */
+.alert { display: flex; gap: 10px; padding: 12px 16px; border-radius: var(--r2); align-items: flex-start; }
+.alert-icon { font-size: 18px; flex-shrink: 0; }
+.alert-body { flex: 1; }
+.alert-title { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
+.alert-msg { font-size: 12px; color: var(--text2); line-height: 1.5; }
+
+.alert-blue { background: var(--blue-bg); border: 1px solid rgba(77,166,255,0.2); }
+.alert-blue .alert-title { color: var(--blue); }
+.alert-green { background: var(--accent-bg); border: 1px solid rgba(0,229,176,0.2); }
+.alert-green .alert-title { color: var(--accent); }
+.alert-amber { background: var(--amber-bg); border: 1px solid rgba(255,193,66,0.2); }
+.alert-amber .alert-title { color: var(--amber); }
+.alert-red { background: var(--red-bg); border: 1px solid rgba(255,77,106,0.2); }
+.alert-red .alert-title { color: var(--red); }
+
+/* Role badges */
+.b-admin { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent); }
+.b-pi { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple); }
+.b-open { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue); }
+.b-researcher { background: var(--surface3); color: var(--text2); }
+.b-student { background: var(--surface3); color: var(--text3); }
+.b-pending { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
+
+/* Settings mode enhanced */
+.settings-mode .settings-banner {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+}
+.settings-mode .content-area {
+  border: 2px dashed var(--amber);
+  border-radius: var(--r2);
+}
+.settings-mode .nav-item[id*="settings"] {
+  background: var(--amber-bg);
+  border-left: 3px solid var(--amber);
+}
+
+/* Form actions */
+.form-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* Span utility */
+.span2 { grid-column: 1 / -1; }
+
+/* Text utilities */
+.text-red { color: var(--red); }
+.text-amber { color: var(--amber); }
+.text-blue { color: var(--blue); }
+.c-accent { color: var(--accent); }
+.c-amber { color: var(--amber); }
+.c-red { color: var(--red); }
+.c-blue { color: var(--blue); }
+.c-purple { color: var(--purple); }
+
+/* Card improvements for import section */
+.card:hover { transition: border-color 0.2s; }
+.card[onclick]:hover { border-color: var(--accent); }

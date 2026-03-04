@@ -44,6 +44,9 @@ export function renderCalendar() {
         <button class="btn btn-primary btn-sm" onclick="openAddEvent()">
           ＋ ${A.lang==='tr'?'Etkinlik':'Event'}
         </button>
+        <button class="btn btn-secondary btn-sm" onclick="openGoogleCalSync()" title="${A.lang==='tr'?'Google Calendar Senkronize':'Google Calendar Sync'}">
+          📅 ${A.lang==='tr'?'Senkronize':'Sync'}
+        </button>
       </div>
     </div>
     <div id="calendarBody"></div>`;

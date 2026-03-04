@@ -177,28 +177,40 @@
       </div>
 
       <div class="nav-group-label" id="adminNavGroup" style="display:none">
-        <span id="ngAdminLabel">YÖNETİCİ</span>
+        <span id="ngAdminLabel">LAB YÖNETİMİ</span>
       </div>
       <div class="nav-item admin-only" id="ni-admin" onclick="nav('admin')" style="display:none">
         <span class="nav-icon">👥</span>
-        <span class="nav-label" id="ni-admin-lbl">Yönetici Paneli</span>
+        <span class="nav-label" id="ni-admin-lbl">Kullanıcı Yönetimi</span>
         <span class="nav-badge hidden" id="pendingBadge">0</span>
       </div>
       <div class="nav-item admin-only" id="ni-settings" onclick="nav('settings')" style="display:none">
         <span class="nav-icon">⚙</span>
-        <span class="nav-label" id="ni-settings-lbl">Sistem Ayarları</span>
+        <span class="nav-label" id="ni-settings-lbl">Lab Ayarları</span>
       </div>
       <div class="nav-item admin-only" id="ni-activitylog" onclick="nav('activitylog')" style="display:none">
         <span class="nav-icon">📋</span>
         <span class="nav-label" id="ni-actlog-lbl">Aktivite Kaydı</span>
       </div>
+      <div class="nav-item admin-only" id="ni-import" onclick="nav('import')" style="display:none">
+        <span class="nav-icon">📥</span>
+        <span class="nav-label" id="ni-import-lbl">Veri İçe Aktar</span>
+      </div>
 
       <div class="nav-group-label" id="systemNavGroup" style="display:none">
-        <span>SİSTEM</span>
+        <span id="ngSystemLabel">SİSTEM SAHİBİ</span>
       </div>
       <div class="nav-item" id="ni-system" onclick="nav('system')" style="display:none">
-        <span class="nav-icon">🛠</span>
-        <span class="nav-label" id="ni-system-lbl">Sistem Yönetimi</span>
+        <span class="nav-icon">🏢</span>
+        <span class="nav-label" id="ni-system-lbl">Lab Yönetimi</span>
+      </div>
+      <div class="nav-item" id="ni-allusers" onclick="nav('allusers')" style="display:none">
+        <span class="nav-icon">👥</span>
+        <span class="nav-label" id="ni-allusers-lbl">Tüm Kullanıcılar</span>
+      </div>
+      <div class="nav-item" id="ni-globallog" onclick="nav('globallog')" style="display:none">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label" id="ni-globallog-lbl">Global Aktivite</span>
       </div>
     </nav>
 
@@ -1018,11 +1030,9 @@
   </div>
 </div>
 
-<!-- CYCLE RULE MODAL -->
-<div class="overlay" id="cycleRuleModal">
+<!-- CYCLE RULE MODAL (placeholder removed - actual modal below) -->
 
 <!-- ADD LAB MODAL (Owner only) -->
-</div>
 <div class="overlay" id="addLabModal">
   <div class="modal" style="max-width:440px">
     <div class="modal-header">
@@ -1086,6 +1096,157 @@
   </div>
 </div>
 
+<!-- EXCEL IMPORT MODAL -->
+<div class="overlay" id="excelImportModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span id="importModalTitle">📥 Excel Import</span>
+      <button class="modal-close" onclick="closeOverlay('excelImportModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="imp_target" value="stock">
+      <!-- Step 1: File Select -->
+      <div id="importStep1">
+        <div class="alert alert-blue" style="margin-bottom:16px">
+          <div class="alert-icon">ℹ</div>
+          <div class="alert-body">
+            <div class="alert-msg" id="importHint">Excel (.xlsx/.xls) veya CSV dosyası yükleyin. İlk satır sütun başlıkları olmalıdır.</div>
+          </div>
+        </div>
+        <div id="importDropZone" style="border:2px dashed var(--border2);border-radius:var(--r2);padding:48px 20px;text-align:center;cursor:pointer;transition:all .2s"
+             ondragover="event.preventDefault();this.style.borderColor='var(--accent)';this.style.background='var(--accent-bg)'"
+             ondragleave="this.style.borderColor='var(--border2)';this.style.background=''"
+             ondrop="event.preventDefault();this.style.borderColor='var(--border2)';this.style.background='';handleImportFile(event.dataTransfer.files[0])"
+             onclick="document.getElementById('importFileInput').click()">
+          <div style="font-size:40px;margin-bottom:12px">📂</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px">Dosyayı sürükleyip bırakın veya tıklayın</div>
+          <div style="font-size:12px;color:var(--text3)">Drop file here or click to browse</div>
+        </div>
+        <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleImportFile(this.files[0])">
+        <div id="importFileInfo" style="display:none;margin-top:12px" class="alert alert-green">
+          <div class="alert-icon">✅</div>
+          <div class="alert-body">
+            <div class="alert-title" id="importFileName"></div>
+            <div class="alert-msg" id="importRowCount"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Step 2: Column Mapping -->
+      <div id="importStep2" style="display:none">
+        <div class="card-title">Sütun Eşleştirme / Column Mapping</div>
+        <div class="alert alert-amber" style="margin-bottom:12px">
+          <div class="alert-icon">⚠</div>
+          <div class="alert-body">
+            <div class="alert-msg">Excel sütunlarını sistem alanlarıyla eşleştirin. Zorunlu alanlar (*) mutlaka eşleştirilmelidir.</div>
+          </div>
+        </div>
+        <div id="importMappingGrid" class="tbl-wrap" style="max-height:400px;overflow-y:auto"></div>
+      </div>
+      <!-- Step 3: Preview -->
+      <div id="importStep3" style="display:none">
+        <div class="card-title">Önizleme / Preview</div>
+        <div id="importPreviewInfo" class="alert alert-blue" style="margin-bottom:12px"></div>
+        <div id="importPreviewTable" class="tbl-wrap" style="max-height:360px;overflow:auto"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="importBackBtn" onclick="importBack()" style="display:none">◀ Geri</button>
+      <button class="btn btn-secondary" onclick="closeOverlay('excelImportModal')">İptal</button>
+      <button class="btn btn-primary" id="importNextBtn" onclick="importNext()" style="display:none">İleri ▶</button>
+      <button class="btn btn-primary" id="importDoBtn" onclick="executeImport()" style="display:none">📥 İçe Aktar</button>
+    </div>
+  </div>
+</div>
+
+<!-- GOOGLE CALENDAR SYNC MODAL -->
+<div class="overlay" id="gcalSyncModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span>📅 Google Calendar Senkronizasyonu</span>
+      <button class="modal-close" onclick="closeOverlay('gcalSyncModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-blue" style="margin-bottom:16px">
+        <div class="alert-icon">ℹ</div>
+        <div class="alert-body">
+          <div class="alert-msg">FEGLIMS etkinliklerini Google Calendar ile senkronize edin. Ergin atımı, transfer tarihleri ve manuel etkinlikler takvime eklenir.</div>
+        </div>
+      </div>
+      <div id="gcalStatus" style="margin-bottom:16px"></div>
+      <div class="fg fg1" style="gap:14px">
+        <div class="fgi">
+          <label class="fl">Senkronize Edilecek Etkinlik Türleri</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+              <input type="checkbox" id="gcal_removal" checked> 🪰 Ergin Atımı
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+              <input type="checkbox" id="gcal_transfer" checked> 🔬 Transfer
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+              <input type="checkbox" id="gcal_manual" checked> 📌 Manuel Etkinlikler
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+              <input type="checkbox" id="gcal_tasks"> 📋 Görevler
+            </label>
+          </div>
+        </div>
+        <div class="fgi">
+          <label class="fl">Tarih Aralığı</label>
+          <div class="row" style="gap:8px">
+            <input type="date" class="fc" id="gcal_from">
+            <span style="color:var(--text3)">→</span>
+            <input type="date" class="fc" id="gcal_to">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('gcalSyncModal')">İptal</button>
+      <button class="btn btn-primary" id="gcalExportBtn" onclick="exportToGoogleCalendar()">📅 .ICS İndir</button>
+      <button class="btn btn-amber" id="gcalSyncBtn" onclick="syncGoogleCalendar()">🔄 Google'a Senkronize Et</button>
+    </div>
+  </div>
+</div>
+
+<!-- ELN TEMPLATE MANAGER MODAL -->
+<div class="overlay" id="elnTemplateManagerModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span>📋 Şablon Yöneticisi / Template Manager</span>
+      <button class="modal-close" onclick="closeOverlay('elnTemplateManagerModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="tplManagerList"></div>
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+        <div class="card-title" style="border:none;padding:0">Yeni Şablon Oluştur / Create New Template</div>
+        <div class="fg fg1" style="gap:10px;margin-top:10px">
+          <div class="fgi">
+            <label class="fl required">Şablon Adı / Template Name</label>
+            <input class="fc" id="tpl_name" placeholder="Yeni şablon adı...">
+          </div>
+          <div class="fgi">
+            <label class="fl">Şablon İçeriği / Content (HTML)</label>
+            <textarea class="fc" id="tpl_content" rows="6" placeholder="<h2>Başlık</h2><p>İçerik...</p>"></textarea>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveCustomTemplate()" style="margin-top:10px">💾 Şablon Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- VERSION HISTORY MODAL -->
+<div class="overlay" id="versionHistoryModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span>📝 Versiyon Geçmişi / Version History</span>
+      <button class="modal-close" onclick="closeOverlay('versionHistoryModal')">✕</button>
+    </div>
+    <div class="modal-body" id="versionHistoryBody"></div>
+  </div>
+</div>
+
 <!-- SCRIPTS -->
 <script>
   // Sistemin ana hafızasını tüm modüllerden önce başlatıyoruz
@@ -1094,7 +1255,8 @@
     lang: localStorage.getItem('feglims_lang') || 'tr',
     theme: localStorage.getItem('feglims_theme') || 'dark',
     section: 'dashboard', settingsMode: false, sessionSecs: 30 * 60,
-    sesInt: null, unsubs: [], cycleRules: [], sysConfig: {}
+    sesInt: null, unsubs: [], cycleRules: [], sysConfig: {},
+    customTemplates: []
   };
 </script>
 <script type="module" src="app.js"></script>

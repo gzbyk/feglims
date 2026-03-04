@@ -418,23 +418,26 @@ window.deleteFormField = async (idx) => {
 
 // ── SETTINGS ─────────────────────────────────
 export function renderSettings() {
-  if (A.userData.role !== 'admin') return;
+  const isAdmin = A.userData.role === 'admin' || window.APP.isOwner;
+  if (!isAdmin) return;
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="tabs" style="margin-bottom:18px">
       <div class="tab active" id="set-tab-general"   onclick="setTab('general')">⚙ ${A.lang==='tr'?'Genel':'General'}</div>
       <div class="tab"        id="set-tab-dropdowns" onclick="setTab('dropdowns')">📋 ${A.lang==='tr'?'Dropdown Listeleri':'Dropdown Lists'}</div>
       <div class="tab"        id="set-tab-cycle"     onclick="setTab('cycle')">🔄 ${A.lang==='tr'?'Döngü Kuralları':'Cycle Rules'}</div>
+      <div class="tab"        id="set-tab-email"     onclick="setTab('email')">📧 ${A.lang==='tr'?'E-posta Ayarları':'Email Settings'}</div>
+      <div class="tab"        id="set-tab-about"     onclick="setTab('about')">ℹ ${A.lang==='tr'?'Hakkında':'About'}</div>
     </div>
     <div id="settingsContent"></div>`;
   setTab('general');
 }
 
 window.setTab = (t) => {
-  ['general','dropdowns','cycle'].forEach(k => {
+  ['general','dropdowns','cycle','email','about'].forEach(k => {
     document.getElementById(`set-tab-${k}`)?.classList.toggle('active', k===t);
   });
-  const fns = { general: loadGeneralSettings, dropdowns: loadDropdownSettings, cycle: loadCycleSettings };
+  const fns = { general: loadGeneralSettings, dropdowns: loadDropdownSettings, cycle: loadCycleSettings, email: loadEmailSettings, about: loadAboutSettings };
   fns[t]?.();
 };
 
@@ -660,6 +663,94 @@ window.saveCycleRule = async () => {
   closeOverlay('cycleRuleModal');
   toast(t('saved'), 'ok');
 };
+
+// EMAIL SETTINGS
+function loadEmailSettings() {
+  const sc = A.sysConfig;
+  document.getElementById('settingsContent').innerHTML = `
+    <div class="card">
+      <div class="card-title">📧 ${A.lang==='tr'?'E-posta Bildirim Ayarları':'Email Notification Settings'}</div>
+      <div class="fg fg1" style="gap:14px">
+        <div class="fgi">
+          <label class="fl">${A.lang==='tr'?'Ergin Atımı Hatırlatma':'Parent Removal Reminder'}</label>
+          <div style="display:flex;gap:12px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="cfg_emailRemoval" ${sc.emailRemoval !== false ? 'checked' : ''}>
+              ${A.lang==='tr'?'E-posta Gönder':'Send Email'}
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="cfg_inappRemoval" ${sc.inappRemoval !== false ? 'checked' : ''}>
+              ${A.lang==='tr'?'In-App Bildirim':'In-App Notification'}
+            </label>
+          </div>
+        </div>
+        <div class="fgi">
+          <label class="fl">${A.lang==='tr'?'Görev Atama Bildirimi':'Task Assignment Notification'}</label>
+          <div style="display:flex;gap:12px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="cfg_emailTask" ${sc.emailTask !== false ? 'checked' : ''}>
+              ${A.lang==='tr'?'E-posta Gönder':'Send Email'}
+            </label>
+          </div>
+        </div>
+        <div class="fgi">
+          <label class="fl">${A.lang==='tr'?'Durum Değişikliği Bildirimi':'Status Change Notification'}</label>
+          <div style="display:flex;gap:12px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="cfg_notifyStatusChange" ${sc.notifyStatusChange !== false ? 'checked' : ''}>
+              ${A.lang==='tr'?'Bildirim Oluştur':'Create Notification'}
+            </label>
+          </div>
+        </div>
+        <div class="fgi">
+          <label class="fl">${A.lang==='tr'?'Hatırlatma Zamanı (gün öncesi)':'Reminder Time (days before)'}</label>
+          <input class="fc" type="number" id="cfg_reminderDays" value="${sc.reminderDays || 0}" min="0" max="7" style="width:80px">
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="saveEmailSettings()">💾 ${A.lang==='tr'?'Kaydet':'Save'}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+window.saveEmailSettings = async () => {
+  const cfg = {
+    emailRemoval: document.getElementById('cfg_emailRemoval').checked,
+    inappRemoval: document.getElementById('cfg_inappRemoval').checked,
+    emailTask: document.getElementById('cfg_emailTask').checked,
+    notifyStatusChange: document.getElementById('cfg_notifyStatusChange').checked,
+    reminderDays: parseInt(document.getElementById('cfg_reminderDays').value) || 0,
+    updatedAt: Timestamp.now(),
+  };
+  await setDoc(doc(db, 'config', 'system'), cfg, { merge: true });
+  A.sysConfig = { ...A.sysConfig, ...cfg };
+  await auditLog('CONFIG', 'Email notification settings updated', A.user.uid, A.userData.name, A.userData.labId);
+  toast(t('saved'), 'ok');
+};
+
+// ABOUT
+function loadAboutSettings() {
+  const sc = A.sysConfig;
+  document.getElementById('settingsContent').innerHTML = `
+    <div class="card" style="text-align:center;padding:40px">
+      <div style="font-size:40px;margin-bottom:16px">🧬</div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px">FEGLIMS v3.3</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:20px">
+        Functional & Evolutionary Genetics Laboratory Information Management System
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:400px;margin:0 auto;text-align:left">
+        <div><div class="fl">Kullanıcı / User</div><div style="margin-top:4px;font-size:13px">${A.userData.name}</div></div>
+        <div><div class="fl">Rol / Role</div><div style="margin-top:4px;font-size:13px">${ROLES[A.userData.role]?.[A.lang] || A.userData.role}</div></div>
+        <div><div class="fl">Lab</div><div style="margin-top:4px;font-size:13px">${A.userData.labName || '—'}</div></div>
+        <div><div class="fl">Lab ID</div><div style="margin-top:4px;font-size:13px;font-family:var(--mono)">${A.userData.labId || '—'}</div></div>
+        <div><div class="fl">E-posta</div><div style="margin-top:4px;font-size:13px">${A.user.email}</div></div>
+        <div><div class="fl">Dil / Language</div><div style="margin-top:4px;font-size:13px">${A.lang === 'tr' ? 'Türkçe' : 'English'}</div></div>
+      </div>
+      <div style="margin-top:24px;font-size:11px;color:var(--text3)">
+        © 2024–2026 FEGL Lab · Hacettepe University
+      </div>
+    </div>`;
+}
 
 // HIDDEN FIELDS
 window.currentFormName = { value: 'stock' };

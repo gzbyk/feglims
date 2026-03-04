@@ -218,10 +218,38 @@ window.saveChem = async () => {
 
   try {
     if (id) {
+      // Version tracking — save previous values before updating
+      const prevSnap = await getDoc(doc(db, 'chemicals', id));
+      const prevData = prevSnap.exists() ? prevSnap.data() : {};
+      const changes = {};
+      const trackFields = ['name','casNo','amount','unit','location','expiryDate','notes','responsible'];
+      trackFields.forEach(f => {
+        if (String(prevData[f] || '') !== String(data[f] || '')) {
+          changes[f] = { old: prevData[f] || '', new: data[f] || '' };
+        }
+      });
+      // GHS classes diff
+      const oldGHS = (prevData.ghsClasses || []).sort().join(',');
+      const newGHS = (data.ghsClasses || []).sort().join(',');
+      if (oldGHS !== newGHS) {
+        changes['ghsClasses'] = { old: oldGHS, new: newGHS };
+      }
+
+      if (Object.keys(changes).length > 0) {
+        const existingVersions = prevData.versionHistory || [];
+        data.versionHistory = [...existingVersions, {
+          changes,
+          changedBy: A.userData.name,
+          changedByUid: A.user.uid,
+          timestamp: Timestamp.now(),
+        }];
+      }
+
       await updateDoc(doc(db, 'chemicals', id), data);
-      await auditLog('EDIT_CHEM', `Edited chemical: ${name}`, A.user.uid, A.userData.name, A.userData.labId);
+      await auditLog('EDIT_CHEM', `Edited chemical: ${name}${Object.keys(changes).length > 0 ? ` (changed: ${Object.keys(changes).join(', ')})` : ''}`, A.user.uid, A.userData.name, A.userData.labId);
     } else {
       data.createdAt = Timestamp.now();
+      data.versionHistory = [];
       await addDoc(collection(db, 'chemicals'), data);
       await auditLog('ADD_CHEM', `Added chemical: ${name}`, A.user.uid, A.userData.name, A.userData.labId);
     }
@@ -262,6 +290,10 @@ window.chemRowClick = async (event, id) => {
         <div style="margin-top:6px">${ghsBadges || '—'}</div>
       </div>
       ${c.notes ? `<div style="grid-column:1/-1"><div class="fl">Notlar / Notes</div><div style="margin-top:4px;font-size:13px;color:var(--text2)">${c.notes}</div></div>` : ''}
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn btn-secondary btn-sm" onclick="showVersionHistory('chemicals','${id}')">📝 ${A.lang==='tr'?'Değişiklik Geçmişi':'Change History'}</button>
+      ${(c.versionHistory||[]).length > 0 ? `<span class="dim-cell" style="font-size:11px;margin-left:8px">${(c.versionHistory||[]).length} ${A.lang==='tr'?'değişiklik':'changes'}</span>` : ''}
     </div>`;
   openOverlay('chemDetailModal');
 };
