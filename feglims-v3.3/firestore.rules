@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner() {
+      return request.auth.token.email == 'memet.celik@hacettepe.edu.tr';
+    }
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isLabAdmin() {
+      return getUserData().role == 'admin';
+    }
+    function sameLabId(labId) {
+      return getUserData().labId == labId;
+    }
+
+    // Labs collection — only owner can write
+    match /labs/{labId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId ||
+        isLabAdmin() ||
+        isOwner()
+      );
+      allow delete: if isOwner();
+    }
+
+    // Stocks — lab-scoped
+    match /stocks/{stockId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
+      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow delete: if isSignedIn() && (isLabAdmin() || isOwner()) && sameLabId(resource.data.labId);
+    }
+
+    // Chemicals — lab-scoped
+    match /chemicals/{chemId} {
+      allow read: if isSignedIn() && sameLabId(resource.data.labId);
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
+      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow delete: if isSignedIn() && (isLabAdmin() || isOwner()) && sameLabId(resource.data.labId);
+    }
+
+    // ELN entries — lab-scoped
+    match /eln/{entryId} {
+      allow read: if isSignedIn() && sameLabId(resource.data.labId);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        isLabAdmin()
+      );
+      allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
+    }
+
+    // Tasks — lab-scoped
+    match /tasks/{taskId} {
+      allow read: if isSignedIn() && sameLabId(resource.data.labId);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
+    }
+
+    // Orders — lab-scoped
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && sameLabId(resource.data.labId);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
+    }
+
+    // Calendar events — lab-scoped
+    match /events/{eventId} {
+      allow read: if isSignedIn() && sameLabId(resource.data.labId);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow delete: if isSignedIn() && sameLabId(resource.data.labId);
+    }
+
+    // Stock lists
+    match /stockLists/{listId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // Notifications — lab-scoped
+    match /notifications/{notifId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isLabAdmin() || isOwner();
+    }
+
+    // Audit log — append only for users, read by admin/owner
+    match /auditLog/{logId} {
+      allow read: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // Config — admin or owner
+    match /config/{configId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (isLabAdmin() || isOwner());
+    }
+
+    // Cycle rules
+    match /cycleRules/{ruleId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (isLabAdmin() || isOwner());
+    }
+
+    // Form schemas
+    match /formSchemas/{formId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (isLabAdmin() || isOwner());
+    }
+
+    // Global stock notes (admin only)
+    match /globalStockNotes/{noteId} {
+      allow read: if isSignedIn() && isLabAdmin();
+      allow create, update: if isSignedIn() && isLabAdmin();
+      allow delete: if isSignedIn() && isLabAdmin();
+    }
+  }
+}

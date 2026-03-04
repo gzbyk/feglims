@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#080f17">
+<title>FEGLIMS v3.1</title>
+<link rel="manifest" href="manifest.json">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .modal-header { display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     LOGIN VIEW
+════════════════════════════════════════ -->
+<div class="view active" id="loginView">
+  <div class="login-grid-bg"></div>
+  <div class="login-card">
+    <div class="login-wordmark">
+      <span class="login-logo-text">FEGLIMS</span>
+    </div>
+    <p class="login-tagline" id="loginTagline">Fonksiyonel ve Evrimsel Genetik Lab — Bilgi Yönetim Sistemi</p>
+    <div class="login-lang-row">
+      <button class="lang-btn active" data-lang="tr" onclick="setLang('tr')">TR</button>
+      <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+    </div>
+    <button class="google-btn" id="googleSignInBtn">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 01-7.18-2.54H1.83v2.07A8 8 0 008.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 001.83 5.4L4.5 7.49a4.77 4.77 0 014.48-3.3z"/></svg>
+      <span id="googleBtnTxt">Google ile Giriş Yap</span>
+    </button>
+    <div class="conn-status">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connTxt">Çevrimiçi</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     REGISTER VIEW
+════════════════════════════════════════ -->
+<div class="view" id="regView">
+  <div class="login-card" style="max-width:480px">
+    <div class="login-wordmark"><span class="login-logo-text">FEGLIMS</span></div>
+    <h2 id="regTitleEl" style="margin-bottom:4px">Profilinizi Tamamlayın</h2>
+    <p id="regSubEl" style="color:var(--text3);font-size:13px;margin-bottom:20px">Yönetici onayı için bu bilgiler zorunludur.</p>
+    <div class="fg fg1" style="gap:12px">
+      <div class="fgi">
+        <label class="fl" id="regNameLabel">Ad Soyad</label>
+        <input class="fc" id="reg_name" autocomplete="name">
+      </div>
+      <div class="fgi">
+        <label class="fl" id="regLabLabel">Laboratuvar</label>
+        <select class="fc" id="reg_lab">
+          <option value="">-- Seçiniz / Select --</option>
+        </select>
+      </div>
+      <div class="fgi">
+        <label class="fl" id="regPosLabel">Rol / Role</label>
+        <select class="fc" id="reg_pos">
+          <option value="student">Öğrenci / Student</option>
+          <option value="researcher">Araştırmacı / Researcher</option>
+          <option value="senior">Kıdemli Araştırmacı / Senior Researcher</option>
+          <option value="pi">PI / Danışman</option>
+        </select>
+      </div>
+      <div class="fgi">
+        <label class="fl" id="regOrcidLabel">ORCID (isteğe bağlı)</label>
+        <input class="fc" id="reg_orcid" placeholder="0000-0000-0000-0000">
+      </div>
+    </div>
+    <div class="row" style="gap:10px;margin-top:20px">
+      <button class="btn btn-primary" style="flex:1" onclick="submitRegistration()">
+        <span id="regSubmitTxt">Onaya Gönder</span>
+      </button>
+      <button class="btn btn-secondary" onclick="doSignOut()">
+        <span id="regCancelTxt">Çıkış Yap</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     PENDING VIEW
+════════════════════════════════════════ -->
+<div class="view" id="pendingView">
+  <div class="login-card" style="text-align:center">
+    <div style="font-size:48px;margin-bottom:16px">⏳</div>
+    <h2 id="pendTitleEl">Yönetici Onayı Bekleniyor</h2>
+    <p id="pendMsgEl" style="color:var(--text3);margin:12px 0 24px">Kaydınız alındı. Yönetici hesabınızı onaylayana kadar bekleyiniz.</p>
+    <div class="row" style="gap:10px;justify-content:center">
+      <button class="btn btn-primary" onclick="location.reload()"><span id="pendRefreshTxt">Yenile</span></button>
+      <button class="btn btn-secondary" onclick="doSignOut()"><span id="pendLogoutTxt">Çıkış Yap</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     DASHBOARD VIEW
+════════════════════════════════════════ -->
+<div class="view" id="dashboardView" style="flex-direction:row">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <!-- Header -->
+    <div class="sb-header">
+      <div class="sb-logo">FEGLIMS</div>
+      <div class="sb-lab" id="sbLab"></div>
+    </div>
+
+    <!-- User -->
+    <div class="sb-user">
+      <div class="sb-avatar" id="uAvatar">U</div>
+      <div class="sb-user-info">
+        <div class="sb-uname" id="uName"></div>
+        <div class="sb-urole" id="uRole"></div>
+      </div>
+    </div>
+
+    <!-- Settings mode toggle (admin only) -->
+    <button class="settings-mode-btn" id="settingsModeBtn" onclick="toggleSettingsMode()" style="display:none">
+      <span>⚙</span>
+      <span id="settingsModeLabel">Ayar Modu</span>
+    </button>
+
+    <!-- Nav -->
+    <nav class="sidebar-nav">
+      <div class="nav-group-label" id="ngMainLabel">ANA MENÜ</div>
+
+      <div class="nav-item" id="ni-dashboard" onclick="nav('dashboard')">
+        <span class="nav-icon">🏠</span>
+        <span class="nav-label" id="ni-dashboard-lbl">Genel Bakış</span>
+      </div>
+      <div class="nav-item" id="ni-inventory" onclick="nav('inventory')">
+        <span class="nav-icon">🔬</span>
+        <span class="nav-label" id="ni-inventory-lbl">Stok Envanteri</span>
+      </div>
+      <div class="nav-item" id="ni-chemicals" onclick="nav('chemicals')">
+        <span class="nav-icon">🧪</span>
+        <span class="nav-label" id="ni-chemicals-lbl">Kimyasal Envanter</span>
+      </div>
+      <div class="nav-item" id="ni-eln" onclick="nav('eln')">
+        <span class="nav-icon">📓</span>
+        <span class="nav-label" id="ni-eln-lbl">Lab Defteri (ELN)</span>
+      </div>
+      <div class="nav-item" id="ni-orders" onclick="nav('orders')">
+        <span class="nav-icon">📦</span>
+        <span class="nav-label" id="ni-orders-lbl">Sipariş Listeleri</span>
+      </div>
+      <div class="nav-item" id="ni-labwork" onclick="nav('labwork')">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label" id="ni-labwork-lbl">Lab İşleri</span>
+      </div>
+      <div class="nav-item" id="ni-calendar" onclick="nav('calendar')">
+        <span class="nav-icon">📅</span>
+        <span class="nav-label" id="ni-calendar-lbl">Takvim</span>
+      </div>
+      <div class="nav-item" id="ni-stocklists" onclick="nav('stocklists')">
+        <span class="nav-icon">📌</span>
+        <span class="nav-label" id="ni-stocklists-lbl">Stok Listelerim</span>
+      </div>
+      <div class="nav-item" id="ni-analytics" onclick="nav('analytics')">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label" id="ni-analytics-lbl">Analitik</span>
+      </div>
+
+      <div class="nav-group-label">🇹🇷 PAYLAŞIM</div>
+      <div class="nav-item" id="ni-turkeyStocks" onclick="nav('turkeyStocks')">
+        <span class="nav-icon">🪰</span>
+        <span class="nav-label">Drosophila Türkiye Stocks</span>
+      </div>
+
+      <div class="nav-group-label" id="adminNavGroup" style="display:none">
+        <span id="ngAdminLabel">YÖNETİCİ</span>
+      </div>
+      <div class="nav-item admin-only" id="ni-admin" onclick="nav('admin')" style="display:none">
+        <span class="nav-icon">👥</span>
+        <span class="nav-label" id="ni-admin-lbl">Yönetici Paneli</span>
+        <span class="nav-badge hidden" id="pendingBadge">0</span>
+      </div>
+      <div class="nav-item admin-only" id="ni-settings" onclick="nav('settings')" style="display:none">
+        <span class="nav-icon">⚙</span>
+        <span class="nav-label" id="ni-settings-lbl">Sistem Ayarları</span>
+      </div>
+      <div class="nav-item admin-only" id="ni-activitylog" onclick="nav('activitylog')" style="display:none">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label" id="ni-actlog-lbl">Aktivite Kaydı</span>
+      </div>
+
+      <div class="nav-group-label" id="systemNavGroup" style="display:none">
+        <span>SİSTEM</span>
+      </div>
+      <div class="nav-item" id="ni-system" onclick="nav('system')" style="display:none">
+        <span class="nav-icon">🛠</span>
+        <span class="nav-label" id="ni-system-lbl">Sistem Yönetimi</span>
+      </div>
+    </nav>
+
+    <!-- Footer -->
+    <div class="sb-footer">
+      <div class="lang-row">
+        <button class="lang-btn" data-lang="tr" onclick="setLang('tr')">TR</button>
+        <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+      </div>
+      <div class="conn-status">
+        <div class="conn-dot" id="connDot2"></div>
+        <span id="connTxt2" style="font-size:11px;color:var(--text3)">Çevrimiçi</span>
+      </div>
+      <div class="nav-item" id="ni-logout" onclick="doSignOut()" style="margin-top:4px">
+        <span class="nav-icon">↩</span>
+        <span class="nav-label" id="ni-logout-lbl">Çıkış Yap</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main-area">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-title" id="topbarTitle">Stok Envanteri</div>
+      </div>
+      <div class="topbar-right">
+        <div class="settings-banner" id="settingsBanner">
+          <span id="settingsBannerText">⚙ Ayar Modundasınız</span>
+        </div>
+        <button class="btn btn-primary btn-sm hidden" id="addStockBtn" onclick="openModal()">
+          ＋ <span id="addStockBtnTxt">Yeni Stok</span>
+        </button>
+        <!-- Notification Bell -->
+        <div class="notif-bell-wrap" style="position:relative">
+          <button class="btn btn-ghost btn-icon" onclick="toggleNotifDropdown()" title="Bildirimler">🔔
+            <span class="notif-badge" id="notifBellBadge" style="display:none">0</span>
+          </button>
+          <div class="notif-dropdown" id="notifDropdown"></div>
+        </div>
+        <button class="btn btn-ghost btn-icon" id="themeToggle" title="Tema değiştir">🌙</button>
+        <div class="session-chip" id="sessionChip">30:00</div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div class="content-area" id="content">
+      <!-- Rendered by JS -->
+    </div>
+  </main>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toasts"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODALS
+════════════════════════════════════════════════════════════ -->
+
+<!-- NEW STOCK MODAL -->
+<div class="overlay" id="stockModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span>🔬 Yeni Stok Ekle / Add New Stock</span>
+      <button class="modal-close" onclick="closeOverlay('stockModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg fg2" style="gap:14px">
+        <!-- Admin: Responsible dropdown -->
+        <div class="fgi span2" id="resp_dropdown_wrap" style="display:none">
+          <label class="fl">Sorumlu Araştırmacı / Responsible Researcher</label>
+          <select class="fc" id="sf_resp_select"></select>
+        </div>
+        <input type="hidden" id="sf_resp" value="">
+        <input type="hidden" id="sf_resp_uid" value="">
+
+        <div class="fgi">
+          <label class="fl required">Stok Kodu / Stock Code</label>
+          <input class="fc" id="sf_code" placeholder="BDSC-12345" oninput="tryFlyBase()">
+          <span class="field-hint" id="sf_flybaseHint"></span>
+        </div>
+        <div class="fgi">
+          <label class="fl required">Tür / Species</label>
+          <select class="fc" id="sf_species">
+            <option>D. melanogaster</option>
+            <option>D. simulans</option>
+            <option>D. virilis</option>
+            <option>D. pseudoobscura</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Soy / Lineage</label>
+          <select class="fc" id="sf_lineage">
+            <option>Wild-type</option><option>Isogenic</option><option>Balancer</option>
+            <option>Genome Editing</option><option>Disease Model</option>
+            <option>Transposon</option><option>RNAi</option><option>GAL4</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Stok Merkezi / Stock Center</label>
+          <select class="fc" id="sf_center" onchange="toggleCustomCenter()">
+            <option>BDSC</option><option>VDRC</option><option>KYOTO</option>
+            <option>DGRC</option><option>Lab Stock</option><option>Custom</option>
+          </select>
+        </div>
+        <div class="fgi span2" id="customCenterWrap" style="display:none">
+          <label class="fl">Özel Merkez Adı</label>
+          <input class="fc" id="sf_customCenter" placeholder="Merkez adı girin">
+        </div>
+        <div class="fgi span2">
+          <label class="fl required">Genotip / Genotype</label>
+          <input class="fc" id="sf_genotype" placeholder="w[*]; P{w[+mC]=UAS-mCD8.GFP}LL5">
+        </div>
+        <div class="fgi">
+          <label class="fl required">Stok Günü / Stock Date</label>
+          <input class="fc" type="date" id="sf_sdate" onchange="calcStockDates()">
+        </div>
+        <div class="fgi">
+          <label class="fl">İklim Odası / Climate Room</label>
+          <select class="fc" id="sf_climate" onchange="calcStockDates()">
+            <option value="25">25°C</option>
+            <option value="18">18°C</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Ergin Atımı / Parent Removal</label>
+          <input class="fc" id="sf_removal" disabled placeholder="Otomatik hesaplanır">
+        </div>
+        <div class="fgi">
+          <label class="fl">Sonraki Transfer / Next Transfer</label>
+          <input class="fc" id="sf_transfer" disabled placeholder="Otomatik hesaplanır">
+        </div>
+        <div class="fgi">
+          <label class="fl">Durum / Status</label>
+          <select class="fc" id="sf_status">
+            <option value="Active">Aktif / Active</option>
+            <option value="Weak">Zayıf / Weak</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Tüp Sayısı / Tube Count</label>
+          <input class="fc" type="number" id="sf_tubes" min="1" placeholder="1">
+        </div>
+        <div class="fgi span2">
+          <label class="fl">Notlar / Notes</label>
+          <textarea class="fc" id="sf_notes" rows="2" placeholder="Opsiyonel notlar..."></textarea>
+        </div>
+        <div class="fgi">
+          <label class="fl">İklim Kabini / Climate Cabinet</label>
+          <input class="fc" id="sf_cabinet" placeholder="Örn: Inkübatör-A / Cabinet-1">
+        </div>
+        <div class="fgi" style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="sf_labNameDiff" onchange="toggleLabNameField()">
+          <label for="sf_labNameDiff" style="cursor:pointer;font-size:13px">Lab soy adı/numarası farklı mı? / Different lab stock name?</label>
+        </div>
+        <div class="fgi span2" id="labNameDiffWrap" style="display:none">
+          <label class="fl">Laboratuvar Soy Adı / Lab Stock Name</label>
+          <input class="fc" id="sf_labStockName" placeholder="Laboratuvardaki adı/numarası">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('stockModal')">İptal / Cancel</button>
+      <button class="btn btn-primary" onclick="saveStock()">💾 Kaydet / Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT STOCK MODAL (admin) -->
+<div class="overlay" id="editStockModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span>✏ Stok Düzenle / Edit Stock</span>
+      <button class="modal-close" onclick="closeOverlay('editStockModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit_stockId">
+      <div class="fg fg2" style="gap:14px">
+        <div class="fgi">
+          <label class="fl">Stok Kodu</label>
+          <input class="fc" id="esf_code">
+        </div>
+        <div class="fgi">
+          <label class="fl">Tür</label>
+          <select class="fc" id="esf_species">
+            <option>D. melanogaster</option><option>D. simulans</option>
+            <option>D. virilis</option><option>D. pseudoobscura</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Soy</label>
+          <select class="fc" id="esf_lineage">
+            <option>Wild-type</option><option>Isogenic</option><option>Balancer</option>
+            <option>Genome Editing</option><option>Disease Model</option>
+            <option>Transposon</option><option>RNAi</option><option>GAL4</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">İklim Odası</label>
+          <select class="fc" id="esf_climate">
+            <option value="25">25°C</option><option value="18">18°C</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Sorumlu</label>
+          <select class="fc" id="esf_resp"></select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Durum</label>
+          <select class="fc" id="esf_status">
+            <option value="Active">Aktif</option>
+            <option value="Weak">Zayıf</option>
+            <option value="Lost">Kaybedildi</option>
+          </select>
+        </div>
+        <div class="fgi span2">
+          <label class="fl">Genotip</label>
+          <input class="fc" id="esf_genotype">
+        </div>
+        <div class="fgi span2">
+          <label class="fl">Notlar</label>
+          <textarea class="fc" id="esf_notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('editStockModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveEditStock()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS CHANGE MODAL -->
+<div class="overlay" id="statusModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span>⟳ Durum Değiştir / Change Status</span>
+      <button class="modal-close" onclick="closeOverlay('statusModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="statusStockId">
+      <div class="fg fg1" style="gap:14px">
+        <div class="fgi">
+          <label class="fl">Yeni Durum / New Status</label>
+          <select class="fc" id="newStatus">
+            <option value="Active">Aktif / Active</option>
+            <option value="Weak">Zayıf / Weak</option>
+            <option value="Lost">Kaybedildi / Lost</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl required">Sebep / Reason</label>
+          <textarea class="fc" id="statusReason" rows="3" placeholder="Durum değişikliğinin sebebini yazın..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('statusModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveStatusChange()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- STOCK DETAIL MODAL -->
+<div class="overlay" id="stockDetailModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span>🔬 Stok Detayı / Stock Detail</span>
+      <button class="modal-close" onclick="closeOverlay('stockDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="stockDetailBody"></div>
+  </div>
+</div>
+
+<!-- BULK STATUS MODAL -->
+<div class="overlay" id="bulkStatusModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span>⟳ Toplu Durum Değişikliği</span>
+      <button class="modal-close" onclick="closeOverlay('bulkStatusModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="bulkStatusIds">
+      <div class="fg fg1" style="gap:14px">
+        <div class="fgi">
+          <label class="fl">Yeni Durum</label>
+          <select class="fc" id="bulkNewStatus">
+            <option value="Active">Aktif</option>
+            <option value="Weak">Zayıf</option>
+            <option value="Lost">Kaybedildi</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl required">Sebep</label>
+          <textarea class="fc" id="bulkStatusReason" rows="3"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('bulkStatusModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveBulkStatus()">Uygula</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK OWNER MODAL -->
+<div class="overlay" id="bulkOwnerModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span>👤 Toplu Sahip Değiştirme</span>
+      <button class="modal-close" onclick="closeOverlay('bulkOwnerModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="bulkOwnerIds">
+      <div class="fgi">
+        <label class="fl">Yeni Sorumlu</label>
+        <select class="fc" id="bulkOwnerSelect"></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('bulkOwnerModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveBulkOwner()">Uygula</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD TO LIST MODAL -->
+<div class="overlay" id="addToListModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span>📌 Listeye Ekle</span>
+      <button class="modal-close" onclick="closeOverlay('addToListModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="addToListStockId">
+      <div class="fgi">
+        <label class="fl">Stok Listesi Seç</label>
+        <select class="fc" id="addToListSelect"></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('addToListModal')">İptal</button>
+      <button class="btn btn-primary" onclick="confirmAddToList()">Ekle</button>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE STOCK LIST MODAL -->
+<div class="overlay" id="createStockListModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span>📌 Yeni Stok Listesi</span>
+      <button class="modal-close" onclick="closeOverlay('createStockListModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg fg1" style="gap:12px">
+        <div class="fgi">
+          <label class="fl required">Liste Başlığı / Title</label>
+          <input class="fc" id="slt_title" placeholder="Mayıs 2026 Deneyleri">
+        </div>
+        <div class="fgi">
+          <label class="fl">Notlar / Notes</label>
+          <input class="fc" id="slt_notes" placeholder="Opsiyonel">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('createStockListModal')">İptal</button>
+      <button class="btn btn-primary" onclick="createStockList()">Oluştur</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHARE STOCK LIST MODAL -->
+<div class="overlay" id="shareStockListModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span>🔗 Listeyi Paylaş</span>
+      <button class="modal-close" onclick="closeOverlay('shareStockListModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="shareListId">
+      <div class="fgi">
+        <label class="fl">Görünürlük / Visibility</label>
+        <select class="fc" id="shareVisibility">
+          <option value="private">Özel / Private</option>
+          <option value="all">Herkes / Everyone</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('shareStockListModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveShareSettings()">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHEMICAL MODAL -->
+<div class="overlay" id="chemModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="chemModalTitle">🧪 Kimyasal Ekle</span>
+      <button class="modal-close" onclick="closeOverlay('chemModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cf_chemId">
+      <div class="fg fg2" style="gap:14px">
+        <div class="fgi span2">
+          <label class="fl required">Kimyasal Adı / Chemical Name</label>
+          <input class="fc" id="cf_name">
+        </div>
+        <div class="fgi">
+          <label class="fl">CAS No</label>
+          <input class="fc" id="cf_cas" placeholder="64-17-5">
+        </div>
+        <div class="fgi">
+          <label class="fl">Miktar / Amount</label>
+          <input class="fc" id="cf_amount" type="number">
+        </div>
+        <div class="fgi">
+          <label class="fl">Birim / Unit</label>
+          <select class="fc" id="cf_unit">
+            <option>mL</option><option>L</option><option>g</option><option>kg</option><option>units</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Konum / Location</label>
+          <input class="fc" id="cf_location" placeholder="Kimyasal dolabı A-3">
+        </div>
+        <div class="fgi">
+          <label class="fl">Son Kullanma / Expiry</label>
+          <input class="fc" type="date" id="cf_expiry">
+        </div>
+        <div class="fgi span2">
+          <label class="fl">GHS Tehlike Sınıfları</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="ghs-cb" value="Flammable"> Flammable</label>
+<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="ghs-cb" value="Corrosive"> Corrosive</label>
+<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="ghs-cb" value="Toxic"> Toxic</label>
+<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="ghs-cb" value="Oxidizer"> Oxidizer</label>
+<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="ghs-cb" value="Harmful"> Harmful</label>
+<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="ghs-cb" value="Environmental"> Environmental</label>
+<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="ghs-cb" value="Explosive"> Explosive</label>
+<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="ghs-cb" value="Irritant"> Irritant</label>
+          </div>
+        </div>
+        <div class="fgi span2">
+          <label class="fl">Notlar / Notes</label>
+          <textarea class="fc" id="cf_notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('chemModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveChem()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHEMICAL DETAIL MODAL -->
+<div class="overlay" id="chemDetailModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span>🧪 Kimyasal Detay</span>
+      <button class="modal-close" onclick="closeOverlay('chemDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="chemDetailBody"></div>
+  </div>
+</div>
+
+<!-- ELN MODAL -->
+<div class="overlay" id="elnModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span id="elnModalTitle">📓 Yeni Kayıt</span>
+      <button class="modal-close" onclick="closeOverlay('elnModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ef_elnId">
+      <div class="fg fg1" style="gap:14px">
+        <div class="fgi">
+          <label class="fl required">Başlık / Title</label>
+          <input class="fc" id="ef_title" placeholder="Deney başlığı...">
+        </div>
+        <div class="fgi">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label class="fl required" style="margin:0">İçerik / Content</label>
+            <div class="row" style="gap:6px">
+              <select class="fc btn-sm" id="elnTemplateSelect" style="width:180px;font-size:11px" onchange="applyElnTemplate()">
+                <option value="">📋 Şablon Seç / Template</option>
+                <option value="experiment">🧪 Deney Protokolü</option>
+                <option value="observation">🔬 Gözlem Notu</option>
+                <option value="crossing">🪰 Çaprazlama</option>
+                <option value="crispr">✂ CRISPR Deneyi</option>
+              </select>
+            </div>
+          </div>
+          <div id="elnQuillEditor" style="min-height:200px;background:var(--surface2);border-radius:var(--r)"></div>
+          <textarea class="fc" id="ef_content" rows="8" style="display:none" placeholder="Deney notları..."></textarea>
+        </div>
+        <div class="fgi">
+          <label class="fl">Etiketler / Tags (virgülle ayırın)</label>
+          <input class="fc" id="ef_tags" placeholder="deney, ilaç, CRISPR">
+        </div>
+        <div class="fg fg2" style="gap:14px">
+          <div class="fgi">
+            <label class="fl">Bağlı Stok / Linked Stock</label>
+            <input class="fc" id="ef_linkedStock" list="elnStockList" placeholder="Stok aramak için yazın...">
+	    <datalist id="elnStockList"></datalist>
+          </div>
+          <div class="fgi">
+            <label class="fl">Bağlı Görev / Linked Task</label>
+            <input class="fc" id="ef_linkedTask" placeholder="Görev adı">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('elnModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveEln()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- ELN DETAIL MODAL -->
+<div class="overlay" id="elnDetailModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span>📓 Kayıt Detayı</span>
+      <button class="modal-close" onclick="closeOverlay('elnDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="elnDetailBody"></div>
+  </div>
+</div>
+
+<!-- ORDER MODAL -->
+<div class="overlay" id="createOrderModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span>📦 Yeni Sipariş Listesi</span>
+      <button class="modal-close" onclick="closeOverlay('createOrderModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg fg1" style="gap:12px">
+        <div class="fgi">
+          <label class="fl required">Liste Başlığı</label>
+          <input class="fc" id="ofc_title" placeholder="Ocak 2026 Siparişi">
+        </div>
+        <div class="fgi">
+          <label class="fl">Tür / Type</label>
+          <select class="fc" id="ofc_type">
+            <option value="fly">🪰 Fly Stock</option>
+            <option value="chemical">🧪 Chemical</option>
+            <option value="equipment">🔧 Equipment</option>
+            <option value="consumable">📦 Consumable</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Notlar</label>
+          <textarea class="fc" id="ofc_notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('createOrderModal')">İptal</button>
+      <button class="btn btn-primary" onclick="createOrder()">Oluştur</button>
+    </div>
+  </div>
+</div>
+
+<!-- ORDER ITEM MODAL -->
+<div class="overlay" id="addOrderItemModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span>＋ Öğe Ekle</span>
+      <button class="modal-close" onclick="closeOverlay('addOrderItemModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ofi_listId">
+      <div class="fg fg1" style="gap:12px">
+        <div class="fgi">
+          <label class="fl required" id="ofi_name_label">Ad</label>
+          <input class="fc" id="ofi_name">
+        </div>
+        <div class="fgi">
+          <label class="fl">Kaynak / Source (BDSC, VDRC, vb.)</label>
+          <input class="fc" id="ofi_source" placeholder="BDSC">
+        </div>
+        <div class="fgi">
+          <label class="fl">Miktar / Qty</label>
+          <input class="fc" id="ofi_qty" placeholder="1">
+        </div>
+        <div class="fgi">
+          <label class="fl">Notlar</label>
+          <textarea class="fc" id="ofi_notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('addOrderItemModal')">İptal</button>
+      <button class="btn btn-primary" onclick="addOrderItem()">Ekle</button>
+    </div>
+  </div>
+</div>
+
+<!-- CALENDAR EVENT MODAL -->
+<div class="overlay" id="eventModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <span>📅 Etkinlik</span>
+      <button class="modal-close" onclick="closeOverlay('eventModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="evf_evId">
+      <div class="fg fg2" style="gap:14px">
+        <div class="fgi span2">
+          <label class="fl required">Başlık / Title</label>
+          <input class="fc" id="evf_title" placeholder="Etkinlik başlığı...">
+        </div>
+        <div class="fgi">
+          <label class="fl required">Tarih / Date</label>
+          <input class="fc" type="date" id="evf_date">
+        </div>
+        <div class="fgi">
+          <label class="fl">Saat / Time</label>
+          <input class="fc" type="time" id="evf_time">
+        </div>
+        <div class="fgi">
+          <label class="fl">Tür / Type</label>
+          <select class="fc" id="evf_type">
+            <option value="meeting">👥 Toplantı / Meeting</option>
+            <option value="deadline">⏰ Son Tarih / Deadline</option>
+            <option value="experiment">🧪 Deney / Experiment</option>
+            <option value="task">📋 Görev / Task</option>
+            <option value="other">📌 Diğer / Other</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Sorumlu / Responsible</label>
+          <select class="fc" id="evf_resp"></select>
+        </div>
+        <div class="fgi span2">
+          <label class="fl">Açıklama / Description</label>
+          <textarea class="fc" id="evf_desc" rows="3"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('eventModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveEvent()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- EVENT DETAIL MODAL -->
+<div class="overlay" id="eventDetailModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span>📅 Etkinlik Detayı</span>
+      <button class="modal-close" onclick="closeOverlay('eventDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="eventDetailBody"></div>
+  </div>
+</div>
+
+<!-- TASK MODAL -->
+<div class="overlay" id="taskModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="taskModalTitle">📋 Görev Ata</span>
+      <button class="modal-close" onclick="closeOverlay('taskModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="tf_taskId">
+      <div class="fg fg2" style="gap:14px">
+        <div class="fgi span2">
+          <label class="fl required">Görev Başlığı / Task Title</label>
+          <input class="fc" id="tf_title">
+        </div>
+        <div class="fgi">
+          <label class="fl">Sorumlu / Assignee</label>
+          <select class="fc" id="tf_assignee"></select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Öncelik / Priority</label>
+          <select class="fc" id="tf_priority">
+            <option value="low">Düşük / Low</option>
+            <option value="medium" selected>Orta / Medium</option>
+            <option value="high">Yüksek / High</option>
+            <option value="urgent">Acil / Urgent</option>
+          </select>
+        </div>
+        <div class="fgi">
+          <label class="fl">Son Tarih / Due Date</label>
+          <input class="fc" type="date" id="tf_due">
+        </div>
+        <div class="fgi">
+          <label class="fl">Bağlı Stok / Linked Stock</label>
+          <input class="fc" id="tf_linkedStock" placeholder="BDSC-12345">
+        </div>
+        <div class="fgi span2">
+          <label class="fl">Açıklama / Description</label>
+          <textarea class="fc" id="tf_desc" rows="3"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('taskModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveTask()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- TASK DETAIL MODAL -->
+<div class="overlay" id="taskDetailModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span>📋 Görev Detayı</span>
+      <button class="modal-close" onclick="closeOverlay('taskDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="taskDetailBody"></div>
+  </div>
+</div>
+
+<!-- EDIT USER MODAL -->
+<div class="overlay" id="editUserModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span>✏ Kullanıcı Düzenle / Edit User</span>
+      <button class="modal-close" onclick="closeOverlay('editUserModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="eu_uid">
+      <div class="fg fg1" style="gap:12px">
+        <div class="fgi">
+          <label class="fl required">Ad Soyad</label>
+          <input class="fc" id="eu_name">
+        </div>
+        <div class="fgi">
+          <label class="fl">Rol</label>
+          <select class="fc" id="eu_role">
+            <option value="student">Öğrenci / Student</option>
+            <option value="researcher">Araştırmacı / Researcher</option>
+            <option value="senior">Kıdemli Araştırmacı / Senior Researcher</option>
+            <option value="pi">PI / Danışman</option>
+            <option value="admin">Lab Yöneticisi / Lab Admin</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('editUserModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveEditUser()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- PERMISSIONS MODAL -->
+<div class="overlay" id="permissionsModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span>🔑 İzin Yönetimi — <span id="permUserName"></span></span>
+      <button class="modal-close" onclick="closeOverlay('permissionsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="permUid">
+      <div id="permGrid"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('permissionsModal')">İptal</button>
+      <button class="btn btn-primary" onclick="savePermissions()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- FORM FIELD MODAL -->
+<div class="overlay" id="formFieldModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span>📋 Form Alanı</span>
+      <button class="modal-close" onclick="closeOverlay('formFieldModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ffFieldIndex">
+      <div class="fg fg1" style="gap:12px">
+        <div class="fgi">
+          <label class="fl required">Alan Başlığı / Label</label>
+          <input class="fc" id="ffLabel">
+        </div>
+        <div class="fgi">
+          <label class="fl">Alan Tipi / Type</label>
+          <select class="fc" id="ffType" onchange="toggleOptionsRow()">
+            <option value="text">Metin / Text</option>
+            <option value="number">Sayı / Number</option>
+            <option value="date">Tarih / Date</option>
+            <option value="select">Dropdown</option>
+            <option value="checkbox">Onay Kutusu / Checkbox</option>
+            <option value="textarea">Uzun Metin / Textarea</option>
+          </select>
+        </div>
+        <div class="fgi" id="ffOptionsRow" style="display:none">
+          <label class="fl">Seçenekler (virgülle) / Options</label>
+          <input class="fc" id="ffOptions" placeholder="Seçenek 1, Seçenek 2">
+        </div>
+        <div class="fgi" style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="ffRequired">
+          <label for="ffRequired" style="cursor:pointer">Zorunlu Alan / Required</label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('formFieldModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveFormField()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- CYCLE RULE MODAL -->
+<div class="overlay" id="cycleRuleModal">
+
+<!-- ADD LAB MODAL (Owner only) -->
+</div>
+<div class="overlay" id="addLabModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span>🏢 Yeni Laboratuvar Ekle</span>
+      <button class="modal-close" onclick="closeOverlay('addLabModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg fg1" style="gap:12px">
+        <div class="fgi">
+          <label class="fl required">Lab ID (kısa, benzersiz)</label>
+          <input class="fc" id="newLabId" placeholder="fegl">
+        </div>
+        <div class="fgi">
+          <label class="fl required">Lab Adı / Lab Name</label>
+          <input class="fc" id="newLabName" placeholder="Functional and Evolutionary Genetics Lab">
+        </div>
+        <div class="fgi">
+          <label class="fl">Kurum / Institution</label>
+          <input class="fc" id="newLabInst" placeholder="Hacettepe University">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('addLabModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveNewLab()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="cycleRuleModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span>🔄 Döngü Kuralı</span>
+      <button class="modal-close" onclick="closeOverlay('cycleRuleModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cr_id">
+      <div class="fg fg2" style="gap:12px">
+        <div class="fgi">
+          <label class="fl required">Sıcaklık (°C) / Temp</label>
+          <input class="fc" type="number" id="cr_temp" placeholder="25">
+        </div>
+        <div class="fgi">
+          <label class="fl required">Ergin Atımı (gün) / Parent Removal (days)</label>
+          <input class="fc" type="number" id="cr_clearing" value="3">
+        </div>
+        <div class="fgi">
+          <label class="fl required">Transfer Günü / Transfer Day</label>
+          <input class="fc" type="number" id="cr_transfer" value="17">
+        </div>
+        <div class="fgi">
+          <label class="fl">Notlar / Notes</label>
+          <input class="fc" id="cr_notes">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('cycleRuleModal')">İptal</button>
+      <button class="btn btn-primary" onclick="saveCycleRule()">💾 Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCRIPTS -->
+<script>
+  // Sistemin ana hafızasını tüm modüllerden önce başlatıyoruz
+  window.APP = {
+    user: null, userData: null, isOwner: false,
+    lang: localStorage.getItem('feglims_lang') || 'tr',
+    theme: localStorage.getItem('feglims_theme') || 'dark',
+    section: 'dashboard', settingsMode: false, sessionSecs: 30 * 60,
+    sesInt: null, unsubs: [], cycleRules: [], sysConfig: {}
+  };
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
