@@ -136,6 +136,13 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isLabAdmin();
     }
 
+    // Backups — admin/owner only
+    match /backups/{backupId} {
+      allow read: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow create: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
+    }
+
     // ELN Templates — lab-scoped
     match /elnTemplates/{templateId} {
       allow read: if isSignedIn();

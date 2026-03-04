@@ -99,6 +99,14 @@ const T = {
     importRows: 'satır içe aktarıldı.',
     // Versioning
     versionSaved: 'Önceki değerler kaydedildi.',
+    // Backup
+    topBackup: 'Yedekleme & Geri Yükleme',
+    niBackup: 'Yedekleme',
+    backupSuccess: 'Yedek başarıyla oluşturuldu.',
+    restoreSuccess: 'Geri yükleme başarılı.',
+    // Saved searches
+    searchSaved: 'Arama kaydedildi.',
+    searchDeleted: 'Kayıtlı arama silindi.',
   },
   en: {
     tagline: 'Functional & Evolutionary Genetics Lab — Information Management System',
@@ -156,6 +164,12 @@ const T = {
     importErr: 'Import error.',
     importRows: 'rows imported.',
     versionSaved: 'Previous values saved.',
+    topBackup: 'Backup & Restore',
+    niBackup: 'Backup',
+    backupSuccess: 'Backup created successfully.',
+    restoreSuccess: 'Restore completed successfully.',
+    searchSaved: 'Search saved.',
+    searchDeleted: 'Saved search deleted.',
   }
 };
 
@@ -209,6 +223,7 @@ function applyStaticTranslations() {
     'ni-system-lbl': 'niSystem',
     'ni-allusers-lbl': 'niAllUsers',
     'ni-globallog-lbl': 'niGlobalLog',
+    'ni-backup-lbl': 'niBackup',
     'ni-logout-lbl': 'niLogout',
     'settingsModeLabel': 'settingsMode',
     'settingsBannerText': 'settingsBanner',
@@ -252,6 +267,17 @@ function startSession() {
     document.addEventListener(e, reset, { passive: true })
   );
 }
+
+// ── MOBILE SIDEBAR ──────────────────────────
+window.toggleMobileSidebar = () => {
+  const sidebar = document.getElementById('mainSidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  if (sidebar) sidebar.classList.toggle('mobile-open');
+  if (overlay) overlay.classList.toggle('active');
+};
+
+// Close sidebar on nav click (mobile)
+const origNav = window.nav;
 
 // ── SETTINGS MODE ───────────────────────────
 window.toggleSettingsMode = () => {
@@ -372,6 +398,7 @@ async function bootDashboard() {
   document.getElementById('ni-settings').style.display = showAdmin ? 'flex' : 'none';
   document.getElementById('ni-activitylog').style.display = showAdmin ? 'flex' : 'none';
   document.getElementById('ni-import').style.display = showAdmin ? 'flex' : 'none';
+  document.getElementById('ni-backup').style.display = showAdmin ? 'flex' : 'none';
   document.getElementById('settingsModeBtn').style.display = showAdmin ? 'flex' : 'none';
 
   // System owner-only elements (separate section)
@@ -404,6 +431,21 @@ async function bootDashboard() {
   // Notification bell watcher
   watchNotificationBell();
 
+  // Try to init Google Calendar API
+  if (window.gapi) {
+    try {
+      gapi.load('client', async () => {
+        try {
+          await gapi.client.init({
+            apiKey: 'AIzaSyBYAvyFWL0o9vtw7bwWQqmDsathUJmS_0Q',
+            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
+          });
+          A.gapiReady = true;
+        } catch { A.gapiReady = false; }
+      });
+    } catch { A.gapiReady = false; }
+  }
+
   // Start with dashboard overview
   nav('dashboard');
 }
@@ -435,6 +477,10 @@ function watchPendingBadge() {
 window.nav = (section) => {
   A.section = section;
 
+  // Close mobile sidebar
+  document.getElementById('mainSidebar')?.classList.remove('mobile-open');
+  document.getElementById('sidebarOverlay')?.classList.remove('active');
+
   // Unsubscribe old listeners
   A.unsubs.forEach(u => u && u());
   A.unsubs = [];
@@ -455,6 +501,7 @@ window.nav = (section) => {
     admin: 'topAdmin', settings: 'topSettings',
     activitylog: 'topActivityLog', system: 'topSystem',
     import: 'topImport', allusers: 'topAllUsers', globallog: 'topGlobalLog',
+    backup: 'topBackup',
   };
   document.getElementById('topbarTitle').textContent = t(titleMap[section] || section);
 
@@ -487,6 +534,7 @@ function renderSection() {
     import:      renderImportPanel,
     allusers:    renderAllUsersPanel,
     globallog:   renderGlobalActivityLog,
+    backup:      renderBackupPanel,
   };
   const fn = renders[A.section];
   if (fn) fn();
@@ -1264,6 +1312,13 @@ function renderImportPanel() {
       </div>
     </div>
     <div class="card" style="margin-top:20px">
+      <div class="card-title">🔄 ${A.lang==='tr'?'Toplu Güncelleme':'Bulk Update'}</div>
+      <div class="dim-cell" style="font-size:12px;margin:8px 0">${A.lang==='tr'
+        ?'Mevcut stokları Excel\'den güncelleyin. Stok Kodu ile eşleşen kayıtlar güncellenir, yeni olanlar eklenir.'
+        :'Update existing stocks from Excel. Records matching by Stock Code are updated, new ones are created.'}</div>
+      <button class="btn btn-primary btn-sm" onclick="openBulkStockUpdate()">🔄 ${A.lang==='tr'?'Toplu Stok Güncelleme':'Bulk Stock Update'}</button>
+    </div>
+    <div class="card" style="margin-top:20px">
       <div class="card-title">📋 ${A.lang==='tr'?'Şablon İndir':'Download Template'}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
         <button class="btn btn-secondary btn-sm" onclick="downloadImportTemplate('stock')">🔬 Stok Şablonu</button>
@@ -1902,6 +1957,484 @@ window.toggleSettingsMode = () => {
     }
   }
 };
+
+// ── BACKUP / RESTORE ─────────────────────────
+function renderBackupPanel() {
+  if (!isLabAdmin(A.userData) && !A.isOwner) { nav('dashboard'); return; }
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="alert alert-blue" style="margin-bottom:20px">
+      <div class="alert-icon">💾</div>
+      <div class="alert-body">
+        <div class="alert-title">${A.lang==='tr'?'Veri Yedekleme & Geri Yükleme':'Data Backup & Restore'}</div>
+        <div class="alert-msg">${A.lang==='tr'
+          ?'Laboratuvar verilerinizi JSON formatında yedekleyin veya önceki yedeğinizi geri yükleyin. Yedek dosyası stoklar, kimyasallar, ELN kayıtları, etkinlikler, görevler ve siparişleri içerir.'
+          :'Backup your lab data in JSON format or restore from a previous backup. Backup includes stocks, chemicals, ELN entries, events, tasks and orders.'}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="card" style="text-align:center;padding:32px;cursor:pointer" onclick="exportLabBackup()">
+        <div style="font-size:48px;margin-bottom:12px">📤</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">${A.lang==='tr'?'Yedek Al':'Export Backup'}</div>
+        <div class="dim-cell" style="font-size:12px">${A.lang==='tr'?'Tüm lab verilerini JSON olarak indirin':'Download all lab data as JSON'}</div>
+      </div>
+      <div class="card" style="text-align:center;padding:32px;cursor:pointer" onclick="document.getElementById('restoreFileInput2').click()">
+        <div style="font-size:48px;margin-bottom:12px">📥</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">${A.lang==='tr'?'Geri Yükle':'Restore'}</div>
+        <div class="dim-cell" style="font-size:12px">${A.lang==='tr'?'JSON yedek dosyasından geri yükleyin':'Restore from JSON backup file'}</div>
+      </div>
+    </div>
+    <input type="file" id="restoreFileInput2" accept=".json" style="display:none" onchange="handleRestoreFile(this.files[0])">
+    <div id="backupPanelStatus"></div>
+    <div id="restorePanelPreview" style="display:none"></div>`;
+}
+
+window.exportLabBackup = async () => {
+  toast(A.lang==='tr'?'Yedek hazırlanıyor...':'Preparing backup...', 'info');
+  const labId = A.userData.labId;
+  const backup = {
+    meta: {
+      version: '3.3',
+      labId,
+      labName: A.userData.labName,
+      exportedBy: A.userData.name,
+      exportedAt: new Date().toISOString(),
+      format: 'FEGLIMS_BACKUP'
+    },
+    data: {}
+  };
+
+  const collections = ['stocks', 'chemicals', 'eln', 'events', 'tasks', 'orders', 'stockLists', 'cycleRules'];
+  for (const coll of collections) {
+    try {
+      const snap = await getDocs(query(collection(db, coll)));
+      let docs = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+      if (['stocks','chemicals','eln','events','tasks','orders','stockLists'].includes(coll)) {
+        docs = docs.filter(d => d.labId === labId);
+      }
+      backup.data[coll] = docs.map(d => {
+        const s = {};
+        Object.entries(d).forEach(([k, v]) => {
+          if (v && typeof v === 'object' && typeof v.toDate === 'function') {
+            s[k] = { _ts: true, value: v.toDate().toISOString() };
+          } else {
+            s[k] = v;
+          }
+        });
+        return s;
+      });
+    } catch { backup.data[coll] = []; }
+  }
+
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `FEGLIMS_Backup_${labId}_${todayISO()}.json`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  toast(t('backupSuccess'), 'ok');
+  await auditLog('BACKUP', `Lab backup exported`, A.user.uid, A.userData.name, A.userData.labId);
+};
+
+let pendingRestore = null;
+
+window.handleRestoreFile = (file) => {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.meta?.format !== 'FEGLIMS_BACKUP') {
+        toast(A.lang==='tr'?'Geçersiz yedek dosyası':'Invalid backup file', 'err');
+        return;
+      }
+      pendingRestore = data;
+      const counts = {};
+      Object.entries(data.data).forEach(([k, v]) => { counts[k] = v.length; });
+      const statusEl = document.getElementById('backupPanelStatus') || document.getElementById('backupStatus');
+      const previewEl = document.getElementById('restorePanelPreview') || document.getElementById('restorePreview');
+      if (statusEl) statusEl.innerHTML = `
+        <div class="alert alert-amber">
+          <div class="alert-icon">⚠</div>
+          <div class="alert-body">
+            <div class="alert-title">${A.lang==='tr'?'Yedek Dosyası Bilgileri':'Backup File Info'}</div>
+            <div class="alert-msg">
+              Lab: ${data.meta.labName} | ${A.lang==='tr'?'Tarih':'Date'}: ${data.meta.exportedAt?.split('T')[0]}<br>
+              ${Object.entries(counts).map(([k,v]) => `${k}: ${v}`).join(' | ')}
+            </div>
+          </div>
+        </div>`;
+      if (previewEl) {
+        previewEl.style.display = '';
+        previewEl.innerHTML = `
+          <div class="row" style="gap:8px;margin-top:12px">
+            <button class="btn btn-primary" onclick="executeRestore()">📥 ${A.lang==='tr'?'Geri Yükle':'Restore'}</button>
+            <button class="btn btn-secondary" onclick="cancelRestore()">İptal</button>
+          </div>
+          <div class="dim-cell" style="font-size:11px;margin-top:8px">${A.lang==='tr'?'Mevcut veriler korunur, yedekteki veriler eklenir.':'Existing data is preserved, backup data is added.'}</div>`;
+      }
+    } catch (err) {
+      toast('Dosya okunamadı: ' + err.message, 'err');
+    }
+  };
+  reader.readAsText(file);
+};
+
+window.executeRestore = async () => {
+  if (!pendingRestore) return;
+  if (!confirm(A.lang==='tr'?'Yedek geri yüklenecek. Devam?':'Restore backup? Continue?')) return;
+  toast(A.lang==='tr'?'Geri yükleniyor...':'Restoring...', 'info');
+  let total = 0;
+  for (const [collName, docs] of Object.entries(pendingRestore.data)) {
+    for (const d of docs) {
+      try {
+        const restored = {};
+        Object.entries(d).forEach(([k, v]) => {
+          if (k === '_id') return;
+          if (v && typeof v === 'object' && v._ts) {
+            restored[k] = Timestamp.fromDate(new Date(v.value));
+          } else {
+            restored[k] = v;
+          }
+        });
+        restored.labId = A.userData.labId;
+        restored.labName = A.userData.labName;
+        restored._restoredAt = Timestamp.now();
+        await addDoc(collection(db, collName), restored);
+        total++;
+      } catch {}
+    }
+  }
+  pendingRestore = null;
+  await auditLog('RESTORE', `Restored ${total} records from backup`, A.user.uid, A.userData.name, A.userData.labId);
+  toast(`${t('restoreSuccess')} (${total} ${A.lang==='tr'?'kayıt':'records'})`, 'ok');
+  if (A.section === 'backup') renderBackupPanel();
+};
+
+window.cancelRestore = () => {
+  pendingRestore = null;
+  const previewEl = document.getElementById('restorePanelPreview') || document.getElementById('restorePreview');
+  const statusEl = document.getElementById('backupPanelStatus') || document.getElementById('backupStatus');
+  if (previewEl) { previewEl.style.display = 'none'; previewEl.innerHTML = ''; }
+  if (statusEl) statusEl.innerHTML = '';
+};
+
+// ── SAVED SEARCHES ───────────────────────────
+window.openSaveSearch = (context) => {
+  A._saveSearchContext = context;
+  document.getElementById('ss_name').value = '';
+  openOverlay('saveSearchModal');
+};
+
+window.confirmSaveSearch = async () => {
+  const name = document.getElementById('ss_name').value.trim();
+  if (!name) { toast(t('required'), 'err'); return; }
+  const ctx = A._saveSearchContext || {};
+  const savedSearches = A.userData.savedSearches || [];
+  savedSearches.push({
+    id: Date.now().toString(36),
+    name,
+    context: ctx.section || A.section,
+    filters: ctx.filters || {},
+    createdAt: new Date().toISOString()
+  });
+  await updateDoc(doc(db, 'users', A.user.uid), { savedSearches });
+  A.userData.savedSearches = savedSearches;
+  closeOverlay('saveSearchModal');
+  toast(t('searchSaved'), 'ok');
+};
+
+window.loadSavedSearch = (id) => {
+  const search = (A.userData.savedSearches || []).find(s => s.id === id);
+  if (!search) return;
+  nav(search.context);
+  setTimeout(() => {
+    const f = search.filters;
+    if (f.searchTerm) {
+      const el = document.getElementById('stockSearch') || document.getElementById('elnSearch');
+      if (el) { el.value = f.searchTerm; el.dispatchEvent(new Event('input')); }
+    }
+    if (f.status) {
+      const el = document.getElementById('stockFilterStatus');
+      if (el) { el.value = f.status; }
+    }
+    if (f.center) {
+      const el = document.getElementById('stockFilterCenter');
+      if (el) { el.value = f.center; }
+    }
+    if (f.climate) {
+      const el = document.getElementById('stockFilterClimate');
+      if (el) { el.value = f.climate; }
+    }
+    if (f.tab) {
+      if (window.setStockTab) window.setStockTab(f.tab);
+    }
+    if (window.stockSearchChange) window.stockSearchChange(f.searchTerm || '');
+  }, 300);
+};
+
+window.deleteSavedSearch = async (id) => {
+  if (!confirm(A.lang==='tr'?'Arama silinsin mi?':'Delete saved search?')) return;
+  const savedSearches = (A.userData.savedSearches || []).filter(s => s.id !== id);
+  await updateDoc(doc(db, 'users', A.user.uid), { savedSearches });
+  A.userData.savedSearches = savedSearches;
+  toast(t('searchDeleted'), 'info');
+  renderSection();
+};
+
+function renderSavedSearchesDropdown(section) {
+  const searches = (A.userData.savedSearches || []).filter(s => s.context === section);
+  if (searches.length === 0) return '';
+  return `<div class="row" style="gap:6px">
+    <select class="fc btn-sm" style="width:180px;font-size:11px" onchange="if(this.value)loadSavedSearch(this.value);this.value=''">
+      <option value="">📌 ${A.lang==='tr'?'Kayıtlı Aramalar':'Saved Searches'}</option>
+      ${searches.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+    </select>
+  </div>`;
+}
+window.renderSavedSearchesDropdown = renderSavedSearchesDropdown;
+
+// ── GOOGLE CALENDAR API (OAuth2) ─────────────
+window.syncToGoogleCalendarAPI = async () => {
+  // Google Calendar API requires OAuth2 client configuration on Google Cloud Console.
+  // Since this app uses Firebase Auth with Google, we can attempt to use the gapi library.
+  if (!window.gapi || !A.gapiReady) {
+    toast(A.lang==='tr'
+      ?'Google Calendar API yapılandırılmamış. Lütfen ICS dosyası indirip Google Calendar\'a import edin.'
+      :'Google Calendar API not configured. Please download the ICS file and import it into Google Calendar.', 'warn');
+    exportToGoogleCalendar();
+    return;
+  }
+
+  try {
+    const authInstance = gapi.auth2.getAuthInstance();
+    if (!authInstance.isSignedIn.get()) {
+      await authInstance.signIn();
+    }
+
+    const fromDate = document.getElementById('gcal_from').value;
+    const toDate = document.getElementById('gcal_to').value;
+    let events = [];
+
+    const stockSnap = await getDocs(query(collection(db, 'stocks'), where('labId','==', A.userData.labId)));
+    stockSnap.docs.forEach(d => {
+      const s = d.data();
+      if (s.status === 'Lost') return;
+      if (s.removalDate >= fromDate && s.removalDate <= toDate) {
+        events.push({ summary: `Ergin Atımı: ${s.stockCode}`, date: s.removalDate, description: `${s.genotype || ''} - ${s.responsible || ''}` });
+      }
+    });
+
+    const evtSnap = await getDocs(query(collection(db, 'events'), where('labId','==', A.userData.labId)));
+    evtSnap.docs.forEach(d => {
+      const e = d.data();
+      if (e.eventDate >= fromDate && e.eventDate <= toDate) {
+        events.push({ summary: e.title, date: e.eventDate, description: e.description || '' });
+      }
+    });
+
+    let synced = 0;
+    for (const evt of events) {
+      try {
+        await gapi.client.calendar.events.insert({
+          calendarId: 'primary',
+          resource: {
+            summary: evt.summary,
+            description: evt.description,
+            start: { date: evt.date },
+            end: { date: evt.date },
+          }
+        });
+        synced++;
+      } catch {}
+    }
+
+    document.getElementById('gcalStatus').innerHTML = `<div class="alert alert-green"><div class="alert-icon">✅</div><div class="alert-body"><div class="alert-msg">${synced} ${A.lang==='tr'?'etkinlik Google Calendar\'a eklendi':'events added to Google Calendar'}</div></div></div>`;
+    toast(`${synced} ${A.lang==='tr'?'etkinlik senkronize edildi':'events synced'}`, 'ok');
+  } catch (e) {
+    toast(A.lang==='tr'?'Google Calendar API hatası: ':'Google Calendar API error: ' + e.message, 'err');
+  }
+};
+
+// ── BULK STOCK UPDATE FROM EXCEL ─────────────
+window.openBulkStockUpdate = () => {
+  importState = { step: 1, data: [], headers: [], mapping: {}, target: 'stock', mode: 'update' };
+  document.getElementById('imp_target').value = 'stock';
+  document.getElementById('importModalTitle').textContent = A.lang==='tr' ? '🔄 Toplu Stok Güncelleme' : '🔄 Bulk Stock Update';
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('importStep3').style.display = 'none';
+  document.getElementById('importNextBtn').style.display = 'none';
+  document.getElementById('importBackBtn').style.display = 'none';
+  document.getElementById('importDoBtn').style.display = 'none';
+  document.getElementById('importFileInfo').style.display = 'none';
+  document.getElementById('importFileInput').value = '';
+  openOverlay('excelImportModal');
+};
+
+const _origExecuteImport = window.executeImport;
+window.executeImport = async () => {
+  if (importState.mode !== 'update') {
+    return _origExecuteImport();
+  }
+
+  const fields = IMPORT_FIELDS[importState.target];
+  const btn = document.getElementById('importDoBtn');
+  btn.disabled = true;
+  btn.textContent = A.lang === 'tr' ? '⏳ Güncelleniyor...' : '⏳ Updating...';
+
+  const snap = await getDocs(query(collection(db, 'stocks'), where('labId', '==', A.userData.labId)));
+  const stockMap = {};
+  snap.docs.forEach(d => {
+    const data = d.data();
+    stockMap[(data.stockCode || '').toLowerCase()] = d.id;
+  });
+
+  let updated = 0, created = 0, errors = 0;
+  for (const row of importState.data) {
+    try {
+      const data = { updatedAt: Timestamp.now() };
+      let matchKey = '';
+      fields.forEach(f => {
+        const idx = importState.mapping[f.key];
+        if (idx === undefined) return;
+        let val = row[idx];
+        if (val instanceof Date) val = val.toISOString().split('T')[0];
+        if (val !== undefined && val !== null && val !== '') {
+          if (f.key === 'climate') val = parseInt(val) || 25;
+          data[f.key] = val;
+        }
+        if (f.key === 'stockCode' && val) matchKey = String(val).toLowerCase();
+      });
+
+      const existingId = stockMap[matchKey];
+      if (existingId) {
+        const prevSnap = await getDoc(doc(db, 'stocks', existingId));
+        const prevData = prevSnap.exists() ? prevSnap.data() : {};
+        const changes = {};
+        Object.entries(data).forEach(([k, v]) => {
+          if (k === 'updatedAt') return;
+          if (String(prevData[k] || '') !== String(v || '')) {
+            changes[k] = { old: prevData[k] || '', new: v || '' };
+          }
+        });
+        if (Object.keys(changes).length > 0) {
+          const existingVersions = prevData.versionHistory || [];
+          data.versionHistory = [...existingVersions, {
+            changes,
+            changedBy: A.userData.name,
+            changedByUid: A.user.uid,
+            timestamp: Timestamp.now(),
+          }];
+        }
+        await updateDoc(doc(db, 'stocks', existingId), data);
+        updated++;
+      } else {
+        data.labId = A.userData.labId;
+        data.labName = A.userData.labName;
+        data.createdAt = Timestamp.now();
+        data.status = data.status || 'Active';
+        data.responsible = data.responsible || A.userData.name;
+        data.responsibleUid = A.user.uid;
+        data.responsibleEmail = A.user.email;
+        data.statusHistory = [{ status: data.status || 'Active', changedBy: A.userData.name, changedAt: new Date().toISOString(), reason: 'Bulk import' }];
+        await addDoc(collection(db, 'stocks'), data);
+        created++;
+      }
+    } catch (e) { errors++; }
+  }
+
+  await auditLog('BULK_UPDATE', `Bulk stock update: ${updated} updated, ${created} created, ${errors} errors`, A.user.uid, A.userData.name, A.userData.labId);
+  btn.disabled = false;
+  btn.textContent = '📥 İçe Aktar';
+  closeOverlay('excelImportModal');
+  toast(`${A.lang==='tr'?'Güncelleme':'Update'}: ${updated} ${A.lang==='tr'?'güncellendi':'updated'}, ${created} ${A.lang==='tr'?'yeni eklendi':'created'} ${errors > 0 ? `(${errors} ${A.lang==='tr'?'hata':'errors'})` : ''}`, errors > 0 ? 'warn' : 'ok');
+  if (A.section === 'import') renderImportPanel();
+};
+
+// ── ELN FILE ATTACHMENTS ─────────────────────
+let elnPendingFiles = [];
+
+window.handleElnFiles = (files) => {
+  if (!files || files.length === 0) return;
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) {
+      toast(A.lang==='tr'?`${file.name} çok büyük (max 10MB)`:`${file.name} too large (max 10MB)`, 'err');
+      continue;
+    }
+    elnPendingFiles.push(file);
+  }
+  renderElnAttachmentsList();
+};
+
+function renderElnAttachmentsList() {
+  const el = document.getElementById('elnAttachmentsList');
+  if (!el) return;
+  const existing = A._elnExistingAttachments || [];
+  const all = [...existing.map((a, i) => ({ name: a.name, size: a.size, existing: true, idx: i, url: a.url || a.data })),
+               ...elnPendingFiles.map((f, i) => ({ name: f.name, size: f.size, existing: false, idx: i }))];
+  if (all.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = all.map(f => {
+    const sizeKB = Math.round(f.size / 1024);
+    return `<div class="row" style="justify-content:space-between;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:4px">
+      <div class="row" style="gap:6px">
+        <span style="font-size:14px">${getFileIcon(f.name)}</span>
+        <span style="font-size:12px">${f.name}</span>
+        <span class="dim-cell" style="font-size:11px">(${sizeKB}KB)</span>
+      </div>
+      <div class="row" style="gap:4px">
+        ${f.url ? `<a href="${f.url}" target="_blank" class="btn btn-ghost btn-xs" download="${f.name}">⬇</a>` : ''}
+        <button class="btn btn-red btn-xs" onclick="removeElnAttachment(${f.existing},${f.idx})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function getFileIcon(name) {
+  const ext = (name || '').split('.').pop().toLowerCase();
+  const icons = { pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊', csv:'📊', png:'🖼', jpg:'🖼', jpeg:'🖼', gif:'🖼', txt:'📃', zip:'📦', rar:'📦' };
+  return icons[ext] || '📎';
+}
+
+window.removeElnAttachment = (isExisting, idx) => {
+  if (isExisting) {
+    A._elnExistingAttachments = (A._elnExistingAttachments || []).filter((_, i) => i !== idx);
+  } else {
+    elnPendingFiles = elnPendingFiles.filter((_, i) => i !== idx);
+  }
+  renderElnAttachmentsList();
+};
+
+async function uploadElnFiles() {
+  if (elnPendingFiles.length === 0) return [];
+  const uploaded = [];
+  for (const file of elnPendingFiles) {
+    try {
+      const base64 = await fileToBase64(file);
+      uploaded.push({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        data: base64,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: A.userData.name,
+      });
+    } catch (e) {
+      toast(`${file.name} ${A.lang==='tr'?'yüklenemedi':'upload failed'}`, 'err');
+    }
+  }
+  return uploaded;
+}
+window.uploadElnFiles = uploadElnFiles;
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 // ── INIT ──────────────────────────────────────
 applyTheme(A.theme);

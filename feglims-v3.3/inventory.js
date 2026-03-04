@@ -66,6 +66,8 @@ export function renderInventory() {
           <option value="18">18°C</option><option value="25">25°C</option>
         </select>
         <button class="btn btn-ghost btn-xs" onclick="clearAdvFilters()" title="Filtreleri Temizle">✕</button>
+        <button class="btn btn-secondary btn-xs" onclick="saveCurrentStockSearch()" title="${A.lang==='tr'?'Aramayı Kaydet':'Save Search'}">📌</button>
+        ${window.renderSavedSearchesDropdown ? window.renderSavedSearchesDropdown('inventory') : ''}
       </div>
     </div>
     <div id="stocksWrap"></div>
@@ -84,6 +86,17 @@ window.setStockTab = setStockTab;
 window.stockSearchChange = (v) => {
   searchTerm = v.toLowerCase();
   loadStocks();
+};
+
+window.saveCurrentStockSearch = () => {
+  const filters = {
+    searchTerm: document.getElementById('stockSearch')?.value || '',
+    status: document.getElementById('stockFilterStatus')?.value || '',
+    center: document.getElementById('stockFilterCenter')?.value || '',
+    climate: document.getElementById('stockFilterClimate')?.value || '',
+    tab: stockTab,
+  };
+  window.openSaveSearch({ section: 'inventory', filters });
 };
 
 window.clearAdvFilters = () => {

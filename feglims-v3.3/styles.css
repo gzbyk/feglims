@@ -981,26 +981,84 @@ body.settings-mode .sm-edit-btn:hover { background: rgba(255,193,66,.2); }
 .empty-icon { font-size: 40px; margin-bottom: 12px; }
 .empty-text { font-size: 13px; }
 
+/* ══ HAMBURGER BUTTON ═════════════════════ */
+.hamburger-btn {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 20px;
+  padding: 4px 10px;
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: background .15s;
+  line-height: 1;
+}
+.hamburger-btn:hover { background: var(--surface2); }
+
+/* ══ SIDEBAR OVERLAY (mobile) ═════════════ */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 998;
+  backdrop-filter: blur(2px);
+}
+.sidebar-overlay.active { display: block; }
+
 /* ══ RESPONSIVE ═══════════════════════════ */
 @media (max-width: 768px) {
-  .sidebar { width: 56px; }
+  .hamburger-btn { display: inline-flex; }
+  .sidebar {
+    position: fixed;
+    left: -260px;
+    top: 0; bottom: 0;
+    z-index: 999;
+    width: 240px;
+    transition: left .25s ease;
+    box-shadow: none;
+  }
+  .sidebar.mobile-open {
+    left: 0;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+  }
   .sidebar .nav-label,
   .sidebar .sb-lab,
-  .sidebar .u-info,
-  .sidebar .nav-group-label { display: none; }
-  .sidebar .nav-item { justify-content: center; padding: 10px; }
+  .sidebar .sb-user-info,
+  .sidebar .nav-group-label,
+  .sidebar .sb-footer .lang-row,
+  .sidebar .sb-footer .conn-status { display: block; }
+  .sidebar .nav-item { justify-content: flex-start; padding: 10px 16px; }
+  .main-area { margin-left: 0 !important; width: 100% !important; }
   .fg { grid-template-columns: 1fr; }
+  .fg2 { grid-template-columns: 1fr; }
   .fg3 { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .modal { width: 100% !important; margin: 0; border-radius: 16px 16px 0 0; align-self: flex-end; }
-  .content { padding: 14px; }
+  .modal { width: 100% !important; margin: 0; border-radius: 16px 16px 0 0; align-self: flex-end; max-height: 90vh; }
+  .modal-lg { max-width: 100% !important; }
+  .content-area { padding: 14px; }
   .perm-grid { grid-template-columns: 1fr; }
+  .topbar { padding: 0 12px; }
+  .topbar-title { font-size: 14px; }
+  .session-chip { display: none; }
+  .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; flex-shrink: 0; }
+  .bulk-bar { flex-wrap: wrap; padding: 8px 12px; }
+  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 600px; }
+  .span2 { grid-column: span 1; }
 }
 
 @media (max-width: 480px) {
   .stats-grid { grid-template-columns: 1fr; }
   .tabs { gap: 4px; }
   .tab { font-size: 11px; padding: 5px 10px; }
+  .topbar-right { gap: 4px; }
+  .btn-sm { font-size: 11px; padding: 5px 10px; }
+  .card { padding: 14px; }
+  .notif-dropdown { right: -40px; width: 280px; }
 }
 
 /* ══ CALENDAR ════════════════════════════════ */

@@ -241,6 +241,11 @@ window.openAddEln = async () => {
   document.getElementById('ef_linkedTask').value = '';
   document.getElementById('elnTemplateSelect').value = '';
   document.getElementById('elnModalTitle').textContent = A.lang === 'tr' ? 'Yeni Kayıt' : 'New Entry';
+  // Reset file attachments
+  A._elnExistingAttachments = [];
+  if (window.elnPendingFiles !== undefined) window.elnPendingFiles = [];
+  const attList = document.getElementById('elnAttachmentsList');
+  if (attList) attList.innerHTML = '';
   loadStockDatalist();
   // Load custom templates into dropdown
   try {
@@ -275,10 +280,37 @@ window.openEditEln = async (id) => {
   document.getElementById('ef_linkedStock').value = e.linkedStock || '';
   document.getElementById('ef_linkedTask').value = e.linkedTask || '';
   document.getElementById('elnModalTitle').textContent = A.lang === 'tr' ? 'Kaydı Düzenle' : 'Edit Entry';
+  // Load existing attachments
+  A._elnExistingAttachments = e.attachments || [];
+  if (window.elnPendingFiles !== undefined) window.elnPendingFiles = [];
+  const attList = document.getElementById('elnAttachmentsList');
+  if (attList) {
+    attList.innerHTML = (e.attachments || []).map((a, i) => {
+      const sizeKB = Math.round((a.size || 0) / 1024);
+      const icon = getFileIconEln(a.name);
+      return `<div class="row" style="justify-content:space-between;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:4px">
+        <div class="row" style="gap:6px">
+          <span style="font-size:14px">${icon}</span>
+          <span style="font-size:12px">${a.name}</span>
+          <span class="dim-cell" style="font-size:11px">(${sizeKB}KB)</span>
+        </div>
+        <div class="row" style="gap:4px">
+          <a href="${a.data || a.url || '#'}" target="_blank" class="btn btn-ghost btn-xs" download="${a.name}">⬇</a>
+          <button class="btn btn-red btn-xs" onclick="removeElnAttachment(true,${i})">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
   loadStockDatalist();
   openOverlay('elnModal');
   setTimeout(() => initQuillEditor(e.content || ''), 100);
 };
+
+function getFileIconEln(name) {
+  const ext = (name || '').split('.').pop().toLowerCase();
+  const icons = { pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊', csv:'📊', png:'🖼', jpg:'🖼', jpeg:'🖼', gif:'🖼', txt:'📃', zip:'📦', rar:'📦' };
+  return icons[ext] || '📎';
+}
 
 window.saveEln = async () => {
   const title = document.getElementById('ef_title').value.trim();
@@ -288,6 +320,15 @@ window.saveEln = async () => {
   const tags = document.getElementById('ef_tags').value.split(',').map(t => t.trim()).filter(Boolean);
   const id = document.getElementById('ef_elnId').value;
 
+  // Handle file attachments
+  let attachments = [...(A._elnExistingAttachments || [])];
+  if (window.uploadElnFiles) {
+    try {
+      const newFiles = await window.uploadElnFiles();
+      attachments = [...attachments, ...newFiles];
+    } catch {}
+  }
+
   const data = {
     title, content, tags,
     linkedStock: document.getElementById('ef_linkedStock').value.trim(),
@@ -296,6 +337,7 @@ window.saveEln = async () => {
     authorName: A.userData.name,
     labId: A.userData.labId,
     updatedAt: Timestamp.now(),
+    attachments,
   };
 
   try {
@@ -342,6 +384,22 @@ window.openElnDetail = async (id) => {
     </div>
     <div style="font-size:14px;line-height:1.8;color:var(--text2);padding:16px;background:var(--surface2);border-radius:var(--r);margin-bottom:16px">${e.content}</div>
     ${tags ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${tags}</div>` : ''}
+    ${(e.attachments || []).length > 0 ? `
+      <div class="card-title" style="margin-bottom:8px">📎 ${A.lang==='tr'?'Dosya Ekleri':'File Attachments'} (${e.attachments.length})</div>
+      <div style="margin-bottom:16px">
+        ${e.attachments.map(a => {
+          const sizeKB = Math.round((a.size || 0) / 1024);
+          const icon = getFileIconEln(a.name);
+          return `<div class="row" style="justify-content:space-between;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:4px">
+            <div class="row" style="gap:6px">
+              <span style="font-size:14px">${icon}</span>
+              <span style="font-size:12px">${a.name}</span>
+              <span class="dim-cell" style="font-size:11px">(${sizeKB}KB)</span>
+            </div>
+            <a href="${a.data || '#'}" target="_blank" class="btn btn-secondary btn-xs" download="${a.name}">⬇ ${A.lang==='tr'?'İndir':'Download'}</a>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
     ${versions.length > 0 ? `
       <div class="card-title" style="margin-bottom:8px">📝 ${A.lang==='tr'?'Versiyon Geçmişi':'Version History'} (${versions.length})</div>
       <div style="max-height:200px;overflow-y:auto">

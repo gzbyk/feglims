@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <link rel="stylesheet" href="styles.css">
 <style>
   .modal-header { display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; }
@@ -106,8 +107,11 @@
 ════════════════════════════════════════ -->
 <div class="view" id="dashboardView" style="flex-direction:row">
 
+  <!-- SIDEBAR OVERLAY (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileSidebar()"></div>
+
   <!-- SIDEBAR -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="mainSidebar">
     <!-- Header -->
     <div class="sb-header">
       <div class="sb-logo">FEGLIMS</div>
@@ -196,6 +200,10 @@
         <span class="nav-icon">📥</span>
         <span class="nav-label" id="ni-import-lbl">Veri İçe Aktar</span>
       </div>
+      <div class="nav-item admin-only" id="ni-backup" onclick="nav('backup')" style="display:none">
+        <span class="nav-icon">💾</span>
+        <span class="nav-label" id="ni-backup-lbl">Yedekleme</span>
+      </div>
 
       <div class="nav-group-label" id="systemNavGroup" style="display:none">
         <span id="ngSystemLabel">SİSTEM SAHİBİ</span>
@@ -237,6 +245,7 @@
     <!-- TOPBAR -->
     <header class="topbar">
       <div class="topbar-left">
+        <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleMobileSidebar()">☰</button>
         <div class="topbar-title" id="topbarTitle">Stok Envanteri</div>
       </div>
       <div class="topbar-right">
@@ -728,6 +737,15 @@
             <input class="fc" id="ef_linkedTask" placeholder="Görev adı">
           </div>
         </div>
+        <div class="fgi">
+          <label class="fl">Dosya Ekleri / File Attachments</label>
+          <div id="elnAttachmentsList" style="margin-bottom:8px"></div>
+          <div class="row" style="gap:8px">
+            <input type="file" id="elnFileInput" multiple style="display:none" onchange="handleElnFiles(this.files)">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('elnFileInput').click()">📎 Dosya Ekle / Add File</button>
+            <span class="dim-cell" style="font-size:11px" id="elnFileHint">Max 10MB per file</span>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1204,7 +1222,7 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeOverlay('gcalSyncModal')">İptal</button>
       <button class="btn btn-primary" id="gcalExportBtn" onclick="exportToGoogleCalendar()">📅 .ICS İndir</button>
-      <button class="btn btn-amber" id="gcalSyncBtn" onclick="syncGoogleCalendar()">🔄 Google'a Senkronize Et</button>
+      <button class="btn btn-amber" id="gcalSyncBtn" onclick="syncToGoogleCalendarAPI()">🔄 Google'a Doğrudan Sync</button>
     </div>
   </div>
 </div>
@@ -1244,6 +1262,68 @@
       <button class="modal-close" onclick="closeOverlay('versionHistoryModal')">✕</button>
     </div>
     <div class="modal-body" id="versionHistoryBody"></div>
+  </div>
+</div>
+
+<!-- BACKUP/RESTORE MODAL -->
+<div class="overlay" id="backupRestoreModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span>💾 Veri Yedekleme & Geri Yükleme / Backup & Restore</span>
+      <button class="modal-close" onclick="closeOverlay('backupRestoreModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-blue" style="margin-bottom:16px">
+        <div class="alert-icon">ℹ</div>
+        <div class="alert-body">
+          <div class="alert-msg">Laboratuvar verilerinizi JSON formatında yedekleyin veya önceki yedeği geri yükleyin.</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card" style="text-align:center;padding:24px;cursor:pointer" onclick="exportLabBackup()">
+          <div style="font-size:36px;margin-bottom:8px">📤</div>
+          <div class="fw-bold" style="margin-bottom:4px">Yedek Al / Export</div>
+          <div class="dim-cell" style="font-size:11px">Tüm lab verilerini JSON olarak indirin</div>
+        </div>
+        <div class="card" style="text-align:center;padding:24px;cursor:pointer" onclick="document.getElementById('restoreFileInput').click()">
+          <div style="font-size:36px;margin-bottom:8px">📥</div>
+          <div class="fw-bold" style="margin-bottom:4px">Geri Yükle / Restore</div>
+          <div class="dim-cell" style="font-size:11px">JSON yedek dosyasından geri yükleyin</div>
+        </div>
+      </div>
+      <input type="file" id="restoreFileInput" accept=".json" style="display:none" onchange="handleRestoreFile(this.files[0])">
+      <div id="backupStatus" style="margin-top:16px"></div>
+      <div id="restorePreview" style="margin-top:16px;display:none">
+        <div class="card-title">Geri Yükleme Önizlemesi / Restore Preview</div>
+        <div id="restorePreviewContent"></div>
+        <div class="row" style="gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="executeRestore()">Geri Yükle / Restore</button>
+          <button class="btn btn-secondary" onclick="cancelRestore()">İptal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SAVED SEARCHES MODAL -->
+<div class="overlay" id="saveSearchModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span>💾 Aramayı Kaydet / Save Search</span>
+      <button class="modal-close" onclick="closeOverlay('saveSearchModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg fg1" style="gap:12px">
+        <div class="fgi">
+          <label class="fl required">Arama Adı / Search Name</label>
+          <input class="fc" id="ss_name" placeholder="Aktif Wild-type stoklarım">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('saveSearchModal')">İptal</button>
+      <button class="btn btn-primary" onclick="confirmSaveSearch()">💾 Kaydet</button>
+    </div>
   </div>
 </div>
 
