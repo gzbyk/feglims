@@ -195,5 +195,36 @@ service cloud.firestore {
         isOwner()
       );
     }
+
+    // Protocols — lab-scoped, owner sees all
+    match /protocols/{protoId} {
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
+      allow update: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
+      allow delete: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
+        isOwner()
+      );
+    }
+
+    // Cross plans — lab-scoped
+    match /crosses/{crossId} {
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
+      allow update: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
+      allow delete: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
+        isOwner()
+      );
+    }
+
+    // Saved searches — user-scoped
+    match /savedSearches/{searchId} {
+      allow read: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
   }
 }

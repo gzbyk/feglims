@@ -26,6 +26,11 @@ import { renderCalendar } from './calendar.js';
 import { renderAnalytics } from './analytics.js';
 import { renderAdmin, renderSettings } from './admin.js';
 import { renderLabWork } from './labwork.js';
+import { renderProtocols } from './protocols.js';
+import { renderAdvancedSearch } from './search.js';
+import { renderReporting } from './reporting.js';
+import { renderFlyBasePanel, getGenotypeLinks } from './flybase.js';
+import { renderCrossPlanner } from './crossplanner.js';
 
 // ── GLOBAL STATE ────────────────────────────
 const A = window.APP;
@@ -108,6 +113,17 @@ const T = {
     // Saved searches
     searchSaved: 'Arama kaydedildi.',
     searchDeleted: 'Kayıtlı arama silindi.',
+    // New modules
+    topProtocols: 'Protokol Kütüphanesi',
+    topSearch: 'Gelişmiş Arama',
+    topReporting: 'Raporlama',
+    topCrossPlanner: 'Deney Planlayıcı',
+    niProtocols: 'Protokoller',
+    niSearch: 'Gelişmiş Arama',
+    niReporting: 'Raporlama',
+    niCrossPlanner: 'Deney Planlayıcı',
+    autoCalEvent: 'Google Calendar etkinliği otomatik oluşturuldu.',
+    autoCalErr: 'Google Calendar otomatik ekleme hatası.',
   },
   en: {
     tagline: 'Functional & Evolutionary Genetics Lab — Information Management System',
@@ -171,10 +187,25 @@ const T = {
     restoreSuccess: 'Restore completed successfully.',
     searchSaved: 'Search saved.',
     searchDeleted: 'Saved search deleted.',
+    // New modules
+    topProtocols: 'Protocol Library',
+    topSearch: 'Advanced Search',
+    topReporting: 'Reporting',
+    topCrossPlanner: 'Cross Planner',
+    niProtocols: 'Protocols',
+    niSearch: 'Advanced Search',
+    niReporting: 'Reporting',
+    niCrossPlanner: 'Cross Planner',
+    autoCalEvent: 'Google Calendar event auto-created.',
+    autoCalErr: 'Google Calendar auto-add error.',
   }
 };
 
 window.t = (k) => T[A.lang]?.[k] ?? k;
+
+// Expose FlyBase functions globally for use in inventory detail views
+window.renderFlyBasePanel = renderFlyBasePanel;
+window.getGenotypeLinks = getGenotypeLinks;
 
 // ── THEME ────────────────────────────────────
 function applyTheme(theme) {
@@ -225,6 +256,10 @@ function applyStaticTranslations() {
     'ni-allusers-lbl': 'niAllUsers',
     'ni-globallog-lbl': 'niGlobalLog',
     'ni-backup-lbl': 'niBackup',
+    'ni-protocols-lbl': 'niProtocols',
+    'ni-search-lbl': 'niSearch',
+    'ni-reporting-lbl': 'niReporting',
+    'ni-crossplanner-lbl': 'niCrossPlanner',
     'ni-logout-lbl': 'niLogout',
     'settingsModeLabel': 'settingsMode',
     'settingsBannerText': 'settingsBanner',
@@ -451,8 +486,49 @@ async function bootDashboard() {
     } catch { A.gapiReady = false; }
   }
 
+  // Request notification permission for PWA reminders
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+
+  // Schedule daily stock reminder check
+  checkStockReminders();
+
   // Start with dashboard overview
   nav('dashboard');
+}
+
+// ── PWA STOCK REMINDERS ─────────────────────
+async function checkStockReminders() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const today = todayISO();
+    const tomorrow = addDays(today, 1);
+    const snap = await getDocs(query(collection(db, 'stocks'),
+      where('labId', '==', A.userData.labId)));
+    const reminders = [];
+    snap.docs.forEach(d => {
+      const s = d.data();
+      if (s.status === 'Lost') return;
+      if (s.removalDate === today || s.removalDate === tomorrow) {
+        reminders.push({ type: 'removal', stock: s, urgent: s.removalDate === today });
+      }
+      if (s.nextTransferDate === today || s.nextTransferDate === tomorrow) {
+        reminders.push({ type: 'transfer', stock: s, urgent: s.nextTransferDate === today });
+      }
+    });
+    reminders.forEach(r => {
+      const urgentTag = r.urgent ? '⚠️ ' : '';
+      const typeLabel = r.type === 'removal'
+        ? (A.lang==='tr'?'Ergin Atımı':'Parent Removal')
+        : (A.lang==='tr'?'Transfer':'Transfer');
+      new Notification(`${urgentTag}${typeLabel}: ${r.stock.stockCode}`, {
+        body: `${r.stock.genotype || ''}\n${A.lang==='tr'?'Sorumlu':'Responsible'}: ${r.stock.responsible || ''}`,
+        icon: '/manifest-icon-192.png',
+        tag: `${r.type}_${r.stock.stockCode}`,
+      });
+    });
+  } catch {}
 }
 
 async function loadSysConfig() {
@@ -503,6 +579,8 @@ window.nav = (section) => {
     orders: 'topOrders', analytics: 'topAnalytics',
     labwork: 'topLabWork', stocklists: 'topStockLists',
     turkeyStocks: 'topTurkeyStocks',
+    protocols: 'topProtocols', search: 'topSearch',
+    reporting: 'topReporting', crossplanner: 'topCrossPlanner',
     admin: 'topAdmin', settings: 'topSettings',
     activitylog: 'topActivityLog', system: 'topSystem',
     import: 'topImport', allusers: 'topAllUsers', globallog: 'topGlobalLog',
@@ -529,6 +607,10 @@ function renderSection() {
     labwork:     renderLabWork,
     stocklists:  renderStockLists,
     turkeyStocks: renderTurkeyStocks,
+    protocols:   renderProtocols,
+    search:      renderAdvancedSearch,
+    reporting:   renderReporting,
+    crossplanner: renderCrossPlanner,
     admin:       renderAdmin,
     settings:    renderSettings,
     activitylog: renderActivityLog,

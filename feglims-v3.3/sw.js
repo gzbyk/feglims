@@ -1,7 +1,8 @@
-const CACHE = 'feglims-v3.3';
+const CACHE = 'feglims-v3.4';
 const ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/firebase.js',
   '/inventory.js', '/chemicals.js', '/eln.js', '/orders.js', '/calendar.js',
-  '/analytics.js', '/admin.js', '/labwork.js', '/manifest.json'];
+  '/analytics.js', '/admin.js', '/labwork.js', '/protocols.js', '/search.js',
+  '/reporting.js', '/flybase.js', '/crossplanner.js', '/manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(() => {}));

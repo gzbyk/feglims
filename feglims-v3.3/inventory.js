@@ -648,13 +648,50 @@ window.saveStock = async () => {
   }
 
   try {
-    await addDoc(collection(db, 'stocks'), s);
+    const docRef = await addDoc(collection(db, 'stocks'), s);
     await auditLog('ADD_STOCK', `Added ${s.stockCode} (${s.species})${shared?' [shared]':''}`,
       A.user.uid, A.userData.name, A.userData.labId);
+
+    // Auto-create Google Calendar events for removal & transfer dates
+    autoCreateCalendarEvents(s);
+
     closeOverlay('stockModal');
     toast(t('saved'), 'ok');
   } catch (e) { toast(t('saveErr') + ' ' + e.message, 'err'); }
 };
+
+// ── AUTO GOOGLE CALENDAR EVENTS ─────────────
+async function autoCreateCalendarEvents(stock) {
+  if (!window.gapi || !A.gapiReady) return;
+  try {
+    const authInstance = gapi.auth2?.getAuthInstance?.();
+    if (!authInstance || !authInstance.isSignedIn.get()) return;
+
+    const events = [];
+    if (stock.removalDate) {
+      events.push({
+        summary: `🪰 ${A.lang==='tr'?'Ergin Atımı':'Parent Removal'}: ${stock.stockCode}`,
+        description: `${stock.genotype || ''}\n${A.lang==='tr'?'Sorumlu':'Responsible'}: ${stock.responsible || ''}`,
+        start: { date: stock.removalDate },
+        end: { date: stock.removalDate },
+        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 60 }] }
+      });
+    }
+    if (stock.nextTransferDate) {
+      events.push({
+        summary: `🔬 ${A.lang==='tr'?'Transfer':'Transfer'}: ${stock.stockCode}`,
+        description: `${stock.genotype || ''}\n${A.lang==='tr'?'Sorumlu':'Responsible'}: ${stock.responsible || ''}`,
+        start: { date: stock.nextTransferDate },
+        end: { date: stock.nextTransferDate },
+        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 60 }] }
+      });
+    }
+
+    for (const evt of events) {
+      await gapi.client.calendar.events.insert({ calendarId: 'primary', resource: evt });
+    }
+  } catch {}
+}
 
 // STATUS CHANGE
 window.openStatusModal = (id, currentStatus) => {
@@ -826,8 +863,9 @@ window.openStockDetail = async (id) => {
         </div>`).join('')}
       <div class="span2">
         <div class="fl">Genotip / Genotype</div>
-        <div class="font-mono" style="margin-top:4px;font-size:12px;word-break:break-all">${s.genotype||'—'}</div>
+        <div class="font-mono" style="margin-top:4px;font-size:12px;word-break:break-all">${window.getGenotypeLinks ? window.getGenotypeLinks(s.genotype||'—') : (s.genotype||'—')}</div>
       </div>
+      ${window.renderFlyBasePanel ? `<div class="span2">${window.renderFlyBasePanel(s)}</div>` : ''}
       <div class="span2" style="display:flex;gap:16px;align-items:center">
         <div>
           <div class="fl">Durum / Status</div>
