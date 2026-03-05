@@ -7,7 +7,7 @@ service cloud.firestore {
       return request.auth != null;
     }
     function isOwner() {
-      return request.auth.token.email == 'memet.celik@hacettepe.edu.tr';
+      return request.auth.token.email == 'memetgozuboyuk@gmail.com';
     }
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
@@ -18,95 +18,130 @@ service cloud.firestore {
     function sameLabId(labId) {
       return getUserData().labId == labId;
     }
+    function canReadByLab(labId) {
+      return isOwner() || sameLabId(labId);
+    }
 
-    // Labs collection — only owner can write
+    // Labs collection — only owner can write, all signed-in can read (for registration dropdown)
     match /labs/{labId} {
       allow read: if isSignedIn();
       allow write: if isOwner();
     }
 
-    // Users collection
+    // Users collection — sameLabId can read, owner sees all
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (
+        isOwner() ||
+        request.auth.uid == userId ||
+        sameLabId(resource.data.labId)
+      );
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isSignedIn() && (
         request.auth.uid == userId ||
-        isLabAdmin() ||
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
         isOwner()
       );
       allow delete: if isOwner();
     }
 
-    // Stocks — lab-scoped
+    // Stocks — lab-scoped read + shared stocks visible to all
     match /stocks/{stockId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (
+        canReadByLab(resource.data.labId) ||
+        resource.data.shared == true
+      );
       allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
-      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow update: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
       allow delete: if isSignedIn() && (isLabAdmin() || isOwner()) && sameLabId(resource.data.labId);
     }
 
-    // Chemicals — lab-scoped
+    // Chemicals — lab-scoped, owner sees all
     match /chemicals/{chemId} {
-      allow read: if isSignedIn() && sameLabId(resource.data.labId);
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
       allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
-      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow update: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
       allow delete: if isSignedIn() && (isLabAdmin() || isOwner()) && sameLabId(resource.data.labId);
     }
 
-    // ELN entries — lab-scoped
+    // ELN entries — lab-scoped, labId validated on create, owner sees all
     match /eln/{entryId} {
-      allow read: if isSignedIn() && sameLabId(resource.data.labId);
-      allow create: if isSignedIn();
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
       allow update: if isSignedIn() && (
         resource.data.authorUid == request.auth.uid ||
-        isLabAdmin()
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
+        isOwner()
       );
-      allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow delete: if isSignedIn() && (
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
+        isOwner()
+      );
     }
 
-    // Tasks — lab-scoped
+    // Tasks — lab-scoped, labId validated on create, owner sees all
     match /tasks/{taskId} {
-      allow read: if isSignedIn() && sameLabId(resource.data.labId);
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && sameLabId(resource.data.labId);
-      allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
+      allow update: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
+      allow delete: if isSignedIn() && (
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
+        isOwner()
+      );
     }
 
-    // Orders — lab-scoped
+    // Orders — lab-scoped, labId validated on create, owner sees all
     match /orders/{orderId} {
-      allow read: if isSignedIn() && sameLabId(resource.data.labId);
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && sameLabId(resource.data.labId);
-      allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
+      allow update: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
+      allow delete: if isSignedIn() && (
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
+        isOwner()
+      );
     }
 
-    // Calendar events — lab-scoped
+    // Calendar events — lab-scoped, labId validated on create, owner sees all
     match /events/{eventId} {
-      allow read: if isSignedIn() && sameLabId(resource.data.labId);
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && sameLabId(resource.data.labId);
-      allow delete: if isSignedIn() && sameLabId(resource.data.labId);
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
+      allow update: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
+      allow delete: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
     }
 
-    // Stock lists
+    // Stock lists — sameLabId can read, owner sees all
     match /stockLists/{listId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (
+        canReadByLab(resource.data.labId) ||
+        resource.data.visibility == 'shared'
+      );
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && resource.data.createdBy == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        isOwner()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        isOwner()
+      );
     }
 
     // Notifications — lab-scoped
     match /notifications/{notifId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
       allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isLabAdmin() || isOwner();
+      allow update: if isSignedIn() && canReadByLab(resource.data.labId);
+      allow delete: if isSignedIn() && (
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
+        isOwner()
+      );
     }
 
-    // Audit log — append only for users, read by admin/owner
+    // Audit log — append only, read by same-lab admin or owner
     match /auditLog/{logId} {
-      allow read: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow read: if isSignedIn() && (
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
+        isOwner()
+      );
       allow create: if isSignedIn();
       allow update, delete: if false;
     }
@@ -129,11 +164,17 @@ service cloud.firestore {
       allow write: if isSignedIn() && (isLabAdmin() || isOwner());
     }
 
+    // Roles config — owner only writes, all signed-in can read
+    match /roles/{roleId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner();
+    }
+
     // Global stock notes (admin only)
     match /globalStockNotes/{noteId} {
-      allow read: if isSignedIn() && isLabAdmin();
-      allow create, update: if isSignedIn() && isLabAdmin();
-      allow delete: if isSignedIn() && isLabAdmin();
+      allow read: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow create, update: if isSignedIn() && (isLabAdmin() || isOwner());
+      allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
     }
 
     // Backups — admin/owner only
@@ -143,14 +184,14 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (isLabAdmin() || isOwner());
     }
 
-    // ELN Templates — lab-scoped
+    // ELN Templates — lab-scoped, owner sees all
     match /elnTemplates/{templateId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && sameLabId(resource.data.labId);
+      allow read: if isSignedIn() && canReadByLab(resource.data.labId);
+      allow create: if isSignedIn() && sameLabId(request.resource.data.labId);
+      allow update: if isSignedIn() && (sameLabId(resource.data.labId) || isOwner());
       allow delete: if isSignedIn() && (
         resource.data.createdBy == request.auth.uid ||
-        isLabAdmin() ||
+        (isLabAdmin() && sameLabId(resource.data.labId)) ||
         isOwner()
       );
     }

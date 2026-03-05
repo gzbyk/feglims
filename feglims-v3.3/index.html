@@ -374,6 +374,10 @@
           <input class="fc" id="sf_cabinet" placeholder="Örn: Inkübatör-A / Cabinet-1">
         </div>
         <div class="fgi" style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="sf_shared" checked>
+          <label for="sf_shared" style="cursor:pointer;font-size:13px">🔗 Paylaşıma Açık / Shared (tüm lab'lar görebilir)</label>
+        </div>
+        <div class="fgi" style="display:flex;align-items:center;gap:10px">
           <input type="checkbox" id="sf_labNameDiff" onchange="toggleLabNameField()">
           <label for="sf_labNameDiff" style="cursor:pointer;font-size:13px">Lab soy adı/numarası farklı mı? / Different lab stock name?</label>
         </div>
@@ -444,6 +448,10 @@
         <div class="fgi span2">
           <label class="fl">Notlar</label>
           <textarea class="fc" id="esf_notes" rows="2"></textarea>
+        </div>
+        <div class="fgi" style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="esf_shared">
+          <label for="esf_shared" style="cursor:pointer;font-size:13px">🔗 Paylaşıma Açık / Shared</label>
         </div>
       </div>
     </div>
@@ -1339,6 +1347,54 @@
     customTemplates: []
   };
 </script>
+<!-- ADD ROLE MODAL (Owner only) -->
+<div class="overlay" id="addRoleModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span>🎭 Yeni Rol Ekle / Add New Role</span>
+      <button class="modal-close" onclick="closeOverlay('addRoleModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg fg1" style="gap:14px">
+        <div class="fgi">
+          <label class="fl">Rol Anahtarı / Role Key (küçük harf, boşluksuz)</label>
+          <input class="fc" id="newRoleKey" placeholder="orn: lab_manager">
+        </div>
+        <div class="fgi">
+          <label class="fl">Türkçe Ad</label>
+          <input class="fc" id="newRoleTr" placeholder="Laboratuvar Yöneticisi">
+        </div>
+        <div class="fgi">
+          <label class="fl">English Name</label>
+          <input class="fc" id="newRoleEn" placeholder="Lab Manager">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('addRoleModal')">İptal / Cancel</button>
+      <button class="btn btn-primary" onclick="saveNewRole()">💾 Kaydet / Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT ROLE PERMISSIONS MODAL (Owner only) -->
+<div class="overlay" id="editRolePermModal">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header">
+      <span id="editRolePermTitle">🔑 Rol İzinleri</span>
+      <button class="modal-close" onclick="closeOverlay('editRolePermModal')">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <input type="hidden" id="editRolePermKey">
+      <div id="editRolePermGrid"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeOverlay('editRolePermModal')">İptal / Cancel</button>
+      <button class="btn btn-primary" onclick="saveRolePerms()">💾 Kaydet / Save</button>
+    </div>
+  </div>
+</div>
+
 <script type="module" src="app.js"></script>
 </body>
 </html>

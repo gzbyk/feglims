@@ -35,7 +35,7 @@ const gp   = new GoogleAuthProvider();
 enableIndexedDbPersistence(db).catch(() => {});
 
 // ── SYSTEM OWNER ────────────────────────────
-const OWNER_EMAIL = 'memet.celik@hacettepe.edu.tr';
+const OWNER_EMAIL = 'memetgozuboyuk@gmail.com';
 
 // ── EMAIL ────────────────────────────────────
 async function sendEmail({ to_email, to_name, subject, message, lab_name, reply_to }) {
@@ -133,48 +133,236 @@ function exportToExcel(data, filename) {
 function isSystemOwner(email) { return email === OWNER_EMAIL; }
 function isLabAdmin(userData) { return userData?.role === 'admin'; }
 
-// ── ROLE-BASED PERMISSION SYSTEM ─────────────
-const ROLES = {
-  admin:    { tr: 'Lab Yöneticisi',      en: 'Lab Admin' },
-  pi:       { tr: 'PI / Danışman',        en: 'PI / Advisor' },
-  senior:   { tr: 'Kıdemli Araştırmacı',  en: 'Senior Researcher' },
-  researcher:{ tr: 'Araştırmacı',         en: 'Researcher' },
-  student:  { tr: 'Öğrenci',              en: 'Student' },
-  pending:  { tr: 'Beklemede',            en: 'Pending' },
-};
-
-const ROLE_DEFAULTS = {
-  admin:      { addStock:true, changeStatus:true, addChemical:true, assignTasks:true, openOrders:true, viewAllELN:true, fullAnalytics:true, inviteUsers:true, exportData:true, manageLabWork:true, deleteStock:true, bulkOperations:true },
-  pi:         { addStock:true, changeStatus:true, addChemical:true, assignTasks:true, openOrders:true, viewAllELN:true, fullAnalytics:true, inviteUsers:false, exportData:true, manageLabWork:true, deleteStock:false, bulkOperations:true },
-  senior:     { addStock:true, changeStatus:true, addChemical:true, assignTasks:true, openOrders:true, viewAllELN:false, fullAnalytics:false, inviteUsers:false, exportData:true, manageLabWork:true, deleteStock:false, bulkOperations:false },
-  researcher: { addStock:true, changeStatus:true, addChemical:true, assignTasks:false, openOrders:false, viewAllELN:false, fullAnalytics:false, inviteUsers:false, exportData:false, manageLabWork:false, deleteStock:false, bulkOperations:false },
-  student:    { addStock:false, changeStatus:false, addChemical:false, assignTasks:false, openOrders:false, viewAllELN:false, fullAnalytics:false, inviteUsers:false, exportData:false, manageLabWork:false, deleteStock:false, bulkOperations:false },
-  pending:    { addStock:false, changeStatus:false, addChemical:false, assignTasks:false, openOrders:false, viewAllELN:false, fullAnalytics:false, inviteUsers:false, exportData:false, manageLabWork:false, deleteStock:false, bulkOperations:false },
-};
-
-const ALL_PERMS = [
-  { k: 'addStock',       tr: 'Stok Ekleme',             en: 'Add Stock' },
-  { k: 'changeStatus',   tr: 'Durum Değiştirme',        en: 'Change Status' },
-  { k: 'addChemical',    tr: 'Kimyasal Ekleme',         en: 'Add Chemical' },
-  { k: 'assignTasks',    tr: 'Görev Atama',             en: 'Assign Tasks' },
-  { k: 'openOrders',     tr: 'Sipariş Listesi Açma',    en: 'Open Order Lists' },
-  { k: 'viewAllELN',     tr: 'Tüm ELN Kayıtları',      en: 'View All ELN' },
-  { k: 'fullAnalytics',  tr: 'Tam Analitik Erişim',     en: 'Full Analytics' },
-  { k: 'inviteUsers',    tr: 'Kullanıcı Daveti',        en: 'Invite Users' },
-  { k: 'exportData',     tr: 'Veri Dışa Aktarım',       en: 'Export Data' },
-  { k: 'manageLabWork',  tr: 'Lab İşleri Yönetimi',     en: 'Manage Lab Work' },
-  { k: 'deleteStock',    tr: 'Stok Silme',              en: 'Delete Stock' },
-  { k: 'bulkOperations', tr: 'Toplu İşlemler',          en: 'Bulk Operations' },
+// ── MODULE-BASED PERMISSION SYSTEM ──────────
+// Permission modules — grouped by feature area
+const PERM_MODULES = [
+  {
+    module: 'inventory', tr: 'Stok Envanteri', en: 'Stock Inventory',
+    perms: [
+      { k: 'inventory.view',       tr: 'Stokları Görüntüleme',    en: 'View Stocks' },
+      { k: 'inventory.add',        tr: 'Stok Ekleme',             en: 'Add Stock' },
+      { k: 'inventory.edit',       tr: 'Stok Düzenleme',          en: 'Edit Stock' },
+      { k: 'inventory.delete',     tr: 'Stok Silme',              en: 'Delete Stock' },
+      { k: 'inventory.changeStatus', tr: 'Durum Değiştirme',      en: 'Change Status' },
+      { k: 'inventory.bulk',       tr: 'Toplu İşlemler',          en: 'Bulk Operations' },
+      { k: 'inventory.export',     tr: 'Dışa Aktar',              en: 'Export' },
+      { k: 'inventory.share',      tr: 'Stok Paylaşma',           en: 'Share Stock' },
+      { k: 'inventory.import',     tr: 'İçe Aktar',               en: 'Import' },
+    ]
+  },
+  {
+    module: 'chemicals', tr: 'Kimyasal Envanter', en: 'Chemical Inventory',
+    perms: [
+      { k: 'chemicals.view',       tr: 'Kimyasalları Görüntüleme', en: 'View Chemicals' },
+      { k: 'chemicals.add',        tr: 'Kimyasal Ekleme',          en: 'Add Chemical' },
+      { k: 'chemicals.edit',       tr: 'Kimyasal Düzenleme',       en: 'Edit Chemical' },
+      { k: 'chemicals.delete',     tr: 'Kimyasal Silme',           en: 'Delete Chemical' },
+      { k: 'chemicals.export',     tr: 'Dışa Aktar',               en: 'Export' },
+    ]
+  },
+  {
+    module: 'eln', tr: 'Lab Defteri (ELN)', en: 'Lab Notebook (ELN)',
+    perms: [
+      { k: 'eln.view',         tr: 'Kendi ELN Kayıtları',      en: 'View Own ELN' },
+      { k: 'eln.viewAll',      tr: 'Tüm ELN Kayıtları',        en: 'View All ELN' },
+      { k: 'eln.add',          tr: 'ELN Girişi Ekleme',         en: 'Add ELN Entry' },
+      { k: 'eln.edit',         tr: 'ELN Girişi Düzenleme',      en: 'Edit ELN Entry' },
+      { k: 'eln.delete',       tr: 'ELN Girişi Silme',          en: 'Delete ELN Entry' },
+      { k: 'eln.export',       tr: 'Dışa Aktar',                en: 'Export' },
+    ]
+  },
+  {
+    module: 'orders', tr: 'Sipariş Listeleri', en: 'Order Lists',
+    perms: [
+      { k: 'orders.view',      tr: 'Siparişleri Görüntüleme',   en: 'View Orders' },
+      { k: 'orders.add',       tr: 'Sipariş Ekleme',            en: 'Add Order' },
+      { k: 'orders.edit',      tr: 'Sipariş Düzenleme',         en: 'Edit Order' },
+      { k: 'orders.delete',    tr: 'Sipariş Silme',             en: 'Delete Order' },
+    ]
+  },
+  {
+    module: 'labwork', tr: 'Laboratuvar İşleri', en: 'Lab Work',
+    perms: [
+      { k: 'labwork.view',     tr: 'Görevleri Görüntüleme',     en: 'View Tasks' },
+      { k: 'labwork.assign',   tr: 'Görev Atama',               en: 'Assign Tasks' },
+      { k: 'labwork.manage',   tr: 'Görev Yönetimi',            en: 'Manage Tasks' },
+      { k: 'labwork.delete',   tr: 'Görev Silme',               en: 'Delete Tasks' },
+    ]
+  },
+  {
+    module: 'calendar', tr: 'Takvim', en: 'Calendar',
+    perms: [
+      { k: 'calendar.view',    tr: 'Takvim Görüntüleme',        en: 'View Calendar' },
+      { k: 'calendar.add',     tr: 'Etkinlik Ekleme',           en: 'Add Event' },
+      { k: 'calendar.edit',    tr: 'Etkinlik Düzenleme',        en: 'Edit Event' },
+      { k: 'calendar.delete',  tr: 'Etkinlik Silme',            en: 'Delete Event' },
+      { k: 'calendar.sync',    tr: 'Google Calendar Senkron',   en: 'Google Calendar Sync' },
+    ]
+  },
+  {
+    module: 'analytics', tr: 'Analitik', en: 'Analytics',
+    perms: [
+      { k: 'analytics.view',       tr: 'Temel Analitik',        en: 'Basic Analytics' },
+      { k: 'analytics.full',       tr: 'Tam Analitik Erişim',   en: 'Full Analytics' },
+      { k: 'analytics.export',     tr: 'Rapor Dışa Aktar',      en: 'Export Reports' },
+    ]
+  },
+  {
+    module: 'admin', tr: 'Yönetim', en: 'Administration',
+    perms: [
+      { k: 'admin.viewUsers',     tr: 'Kullanıcıları Görüntüleme', en: 'View Users' },
+      { k: 'admin.manageUsers',   tr: 'Kullanıcı Yönetimi',       en: 'Manage Users' },
+      { k: 'admin.inviteUsers',   tr: 'Kullanıcı Daveti',         en: 'Invite Users' },
+      { k: 'admin.approveUsers',  tr: 'Kullanıcı Onaylama',       en: 'Approve Users' },
+      { k: 'admin.settings',      tr: 'Sistem Ayarları',          en: 'System Settings' },
+      { k: 'admin.backup',        tr: 'Yedekleme / Geri Yükleme', en: 'Backup / Restore' },
+      { k: 'admin.activityLog',   tr: 'Aktivite Kaydı',          en: 'Activity Log' },
+      { k: 'admin.formSchema',    tr: 'Form Şeması Düzenleme',   en: 'Edit Form Schemas' },
+    ]
+  },
 ];
 
-// Resolve effective permission: override > role default
+// Flatten all permissions into a single array for backward compat
+const ALL_PERMS = PERM_MODULES.flatMap(m => m.perms);
+
+// Default built-in roles
+const DEFAULT_ROLES = {
+  admin:    { tr: 'Lab Yöneticisi',      en: 'Lab Admin',          isDefault: true, order: 0 },
+  pi:       { tr: 'PI / Danışman',        en: 'PI / Advisor',       isDefault: true, order: 1 },
+  senior:   { tr: 'Kıdemli Araştırmacı',  en: 'Senior Researcher',  isDefault: true, order: 2 },
+  researcher:{ tr: 'Araştırmacı',         en: 'Researcher',         isDefault: true, order: 3 },
+  student:  { tr: 'Öğrenci',              en: 'Student',            isDefault: true, order: 4 },
+  pending:  { tr: 'Beklemede',            en: 'Pending',            isDefault: true, order: 99 },
+};
+
+// Default permissions per built-in role
+const ROLE_DEFAULTS = {
+  admin: {
+    'inventory.view':true, 'inventory.add':true, 'inventory.edit':true, 'inventory.delete':true, 'inventory.changeStatus':true, 'inventory.bulk':true, 'inventory.export':true, 'inventory.share':true, 'inventory.import':true,
+    'chemicals.view':true, 'chemicals.add':true, 'chemicals.edit':true, 'chemicals.delete':true, 'chemicals.export':true,
+    'eln.view':true, 'eln.viewAll':true, 'eln.add':true, 'eln.edit':true, 'eln.delete':true, 'eln.export':true,
+    'orders.view':true, 'orders.add':true, 'orders.edit':true, 'orders.delete':true,
+    'labwork.view':true, 'labwork.assign':true, 'labwork.manage':true, 'labwork.delete':true,
+    'calendar.view':true, 'calendar.add':true, 'calendar.edit':true, 'calendar.delete':true, 'calendar.sync':true,
+    'analytics.view':true, 'analytics.full':true, 'analytics.export':true,
+    'admin.viewUsers':true, 'admin.manageUsers':true, 'admin.inviteUsers':true, 'admin.approveUsers':true, 'admin.settings':true, 'admin.backup':true, 'admin.activityLog':true, 'admin.formSchema':true,
+  },
+  pi: {
+    'inventory.view':true, 'inventory.add':true, 'inventory.edit':true, 'inventory.delete':false, 'inventory.changeStatus':true, 'inventory.bulk':true, 'inventory.export':true, 'inventory.share':true, 'inventory.import':false,
+    'chemicals.view':true, 'chemicals.add':true, 'chemicals.edit':true, 'chemicals.delete':false, 'chemicals.export':true,
+    'eln.view':true, 'eln.viewAll':true, 'eln.add':true, 'eln.edit':true, 'eln.delete':false, 'eln.export':true,
+    'orders.view':true, 'orders.add':true, 'orders.edit':true, 'orders.delete':false,
+    'labwork.view':true, 'labwork.assign':true, 'labwork.manage':true, 'labwork.delete':false,
+    'calendar.view':true, 'calendar.add':true, 'calendar.edit':true, 'calendar.delete':false, 'calendar.sync':true,
+    'analytics.view':true, 'analytics.full':true, 'analytics.export':true,
+    'admin.viewUsers':true, 'admin.manageUsers':false, 'admin.inviteUsers':false, 'admin.approveUsers':false, 'admin.settings':false, 'admin.backup':false, 'admin.activityLog':true, 'admin.formSchema':false,
+  },
+  senior: {
+    'inventory.view':true, 'inventory.add':true, 'inventory.edit':true, 'inventory.delete':false, 'inventory.changeStatus':true, 'inventory.bulk':false, 'inventory.export':true, 'inventory.share':true, 'inventory.import':false,
+    'chemicals.view':true, 'chemicals.add':true, 'chemicals.edit':true, 'chemicals.delete':false, 'chemicals.export':true,
+    'eln.view':true, 'eln.viewAll':false, 'eln.add':true, 'eln.edit':true, 'eln.delete':false, 'eln.export':true,
+    'orders.view':true, 'orders.add':true, 'orders.edit':true, 'orders.delete':false,
+    'labwork.view':true, 'labwork.assign':true, 'labwork.manage':true, 'labwork.delete':false,
+    'calendar.view':true, 'calendar.add':true, 'calendar.edit':true, 'calendar.delete':false, 'calendar.sync':false,
+    'analytics.view':true, 'analytics.full':false, 'analytics.export':false,
+    'admin.viewUsers':false, 'admin.manageUsers':false, 'admin.inviteUsers':false, 'admin.approveUsers':false, 'admin.settings':false, 'admin.backup':false, 'admin.activityLog':false, 'admin.formSchema':false,
+  },
+  researcher: {
+    'inventory.view':true, 'inventory.add':true, 'inventory.edit':false, 'inventory.delete':false, 'inventory.changeStatus':true, 'inventory.bulk':false, 'inventory.export':false, 'inventory.share':true, 'inventory.import':false,
+    'chemicals.view':true, 'chemicals.add':true, 'chemicals.edit':false, 'chemicals.delete':false, 'chemicals.export':false,
+    'eln.view':true, 'eln.viewAll':false, 'eln.add':true, 'eln.edit':true, 'eln.delete':false, 'eln.export':false,
+    'orders.view':true, 'orders.add':false, 'orders.edit':false, 'orders.delete':false,
+    'labwork.view':true, 'labwork.assign':false, 'labwork.manage':false, 'labwork.delete':false,
+    'calendar.view':true, 'calendar.add':true, 'calendar.edit':false, 'calendar.delete':false, 'calendar.sync':false,
+    'analytics.view':true, 'analytics.full':false, 'analytics.export':false,
+    'admin.viewUsers':false, 'admin.manageUsers':false, 'admin.inviteUsers':false, 'admin.approveUsers':false, 'admin.settings':false, 'admin.backup':false, 'admin.activityLog':false, 'admin.formSchema':false,
+  },
+  student: {
+    'inventory.view':true, 'inventory.add':false, 'inventory.edit':false, 'inventory.delete':false, 'inventory.changeStatus':false, 'inventory.bulk':false, 'inventory.export':false, 'inventory.share':false, 'inventory.import':false,
+    'chemicals.view':true, 'chemicals.add':false, 'chemicals.edit':false, 'chemicals.delete':false, 'chemicals.export':false,
+    'eln.view':true, 'eln.viewAll':false, 'eln.add':true, 'eln.edit':false, 'eln.delete':false, 'eln.export':false,
+    'orders.view':true, 'orders.add':false, 'orders.edit':false, 'orders.delete':false,
+    'labwork.view':true, 'labwork.assign':false, 'labwork.manage':false, 'labwork.delete':false,
+    'calendar.view':true, 'calendar.add':false, 'calendar.edit':false, 'calendar.delete':false, 'calendar.sync':false,
+    'analytics.view':false, 'analytics.full':false, 'analytics.export':false,
+    'admin.viewUsers':false, 'admin.manageUsers':false, 'admin.inviteUsers':false, 'admin.approveUsers':false, 'admin.settings':false, 'admin.backup':false, 'admin.activityLog':false, 'admin.formSchema':false,
+  },
+  pending: {
+    'inventory.view':false, 'inventory.add':false, 'inventory.edit':false, 'inventory.delete':false, 'inventory.changeStatus':false, 'inventory.bulk':false, 'inventory.export':false, 'inventory.share':false, 'inventory.import':false,
+    'chemicals.view':false, 'chemicals.add':false, 'chemicals.edit':false, 'chemicals.delete':false, 'chemicals.export':false,
+    'eln.view':false, 'eln.viewAll':false, 'eln.add':false, 'eln.edit':false, 'eln.delete':false, 'eln.export':false,
+    'orders.view':false, 'orders.add':false, 'orders.edit':false, 'orders.delete':false,
+    'labwork.view':false, 'labwork.assign':false, 'labwork.manage':false, 'labwork.delete':false,
+    'calendar.view':false, 'calendar.add':false, 'calendar.edit':false, 'calendar.delete':false, 'calendar.sync':false,
+    'analytics.view':false, 'analytics.full':false, 'analytics.export':false,
+    'admin.viewUsers':false, 'admin.manageUsers':false, 'admin.inviteUsers':false, 'admin.approveUsers':false, 'admin.settings':false, 'admin.backup':false, 'admin.activityLog':false, 'admin.formSchema':false,
+  },
+};
+
+// ROLES map — starts with defaults, gets merged with custom roles from Firestore
+let ROLES = { ...DEFAULT_ROLES };
+
+// Load custom roles from Firestore and merge
+async function loadCustomRoles() {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'roles'));
+    if (snap.exists()) {
+      const data = snap.data();
+      // Merge custom roles into ROLES
+      if (data.customRoles) {
+        Object.entries(data.customRoles).forEach(([key, role]) => {
+          ROLES[key] = { ...role, isDefault: false };
+        });
+      }
+      // Merge owner-modified permissions for default roles
+      if (data.rolePermissions) {
+        Object.entries(data.rolePermissions).forEach(([roleKey, perms]) => {
+          if (ROLE_DEFAULTS[roleKey] !== undefined) {
+            ROLE_DEFAULTS[roleKey] = { ...ROLE_DEFAULTS[roleKey], ...perms };
+          } else {
+            // Custom role permissions
+            ROLE_DEFAULTS[roleKey] = { ...ROLE_DEFAULTS.pending, ...perms };
+          }
+        });
+      }
+    }
+  } catch {}
+}
+
+// Backward compatibility mapping: old perm keys → new perm keys
+const LEGACY_PERM_MAP = {
+  addStock: 'inventory.add',
+  changeStatus: 'inventory.changeStatus',
+  addChemical: 'chemicals.add',
+  assignTasks: 'labwork.assign',
+  openOrders: 'orders.view',
+  viewAllELN: 'eln.viewAll',
+  fullAnalytics: 'analytics.full',
+  inviteUsers: 'admin.inviteUsers',
+  exportData: 'inventory.export',
+  manageLabWork: 'labwork.manage',
+  deleteStock: 'inventory.delete',
+  bulkOperations: 'inventory.bulk',
+};
+
+// Resolve effective permission: override > role default > false
 function hasPermission(userData, permKey) {
   if (!userData) return false;
-  if (userData.role === 'admin') return true; // Admin always has all
+  // Owner always has all permissions
+  if (isSystemOwner(userData.email)) return true;
+  // Map legacy permission keys
+  const resolvedKey = LEGACY_PERM_MAP[permKey] || permKey;
+  // Check per-user overrides first
   const overrides = userData.permOverrides || {};
-  if (overrides[permKey] !== undefined) return !!overrides[permKey];
+  if (overrides[resolvedKey] !== undefined) return !!overrides[resolvedKey];
+  // Legacy override check
+  if (overrides[permKey] !== undefined && permKey !== resolvedKey) return !!overrides[permKey];
+  // Role defaults
   const defaults = ROLE_DEFAULTS[userData.role] || ROLE_DEFAULTS.pending;
-  return !!defaults[permKey];
+  if (defaults[resolvedKey] !== undefined) return !!defaults[resolvedKey];
+  // Legacy default check
+  if (defaults[permKey] !== undefined && permKey !== resolvedKey) return !!defaults[permKey];
+  return false;
 }
 
 export {
@@ -190,5 +378,6 @@ export {
   validateCAS, validateORCID,
   capitalize, exportToExcel,
   isSystemOwner, isLabAdmin,
-  ROLES, ROLE_DEFAULTS, ALL_PERMS, hasPermission
+  ROLES, DEFAULT_ROLES, ROLE_DEFAULTS, ALL_PERMS, PERM_MODULES,
+  hasPermission, loadCustomRoles, LEGACY_PERM_MAP
 };

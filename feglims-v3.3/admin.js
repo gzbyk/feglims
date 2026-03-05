@@ -1,12 +1,13 @@
 // ═══════════════════════════════════════════
-//  FEGLIMS v3.1 — admin.js
-//  Admin panel with role-based permissions
+//  FEGLIMS v3.4 — admin.js
+//  Admin panel with module-based permissions
 // ═══════════════════════════════════════════
 import {
   db, collection, doc, addDoc, getDoc, setDoc,
   updateDoc, deleteDoc, query, orderBy, onSnapshot,
   getDocs, Timestamp, sendEmail, auditLog,
-  ROLES, ROLE_DEFAULTS, ALL_PERMS, hasPermission
+  ROLES, DEFAULT_ROLES, ROLE_DEFAULTS, ALL_PERMS, PERM_MODULES,
+  hasPermission, loadCustomRoles
 } from './firebase.js';
 
 const A = window.APP;
@@ -14,10 +15,12 @@ const A = window.APP;
 // ── ADMIN PANEL ──────────────────────────────
 export function renderAdmin() {
   const content = document.getElementById('content');
+  const isOwner = A.isOwner;
   content.innerHTML = `
     <div class="tabs" style="margin-bottom:18px">
       <div class="tab active" id="adm-tab-users"   onclick="admTab('users')">👥 ${A.lang==='tr'?'Kullanıcılar':'Users'}</div>
       <div class="tab"        id="adm-tab-pending" onclick="admTab('pending')">⏳ ${A.lang==='tr'?'Bekleyenler':'Pending'} <span id="admPendBadge"></span></div>
+      ${isOwner?`<div class="tab" id="adm-tab-roles" onclick="admTab('roles')">🎭 ${A.lang==='tr'?'Roller & İzinler':'Roles & Permissions'}</div>`:''}
       <div class="tab"        id="adm-tab-notifs"  onclick="admTab('notifs')">🔔 ${A.lang==='tr'?'Bildirimler':'Notifications'}</div>
       <div class="tab"        id="adm-tab-forms"   onclick="admTab('forms')">📋 ${A.lang==='tr'?'Form Şeması':'Form Schema'}</div>
     </div>
@@ -26,10 +29,10 @@ export function renderAdmin() {
 }
 
 window.admTab = (t) => {
-  ['users','pending','notifs','forms'].forEach(k => {
+  ['users','pending','roles','notifs','forms'].forEach(k => {
     document.getElementById(`adm-tab-${k}`)?.classList.toggle('active', k===t);
   });
-  const fns = { users: loadAdminUsers, pending: loadPendingUsers, notifs: loadNotifs, forms: loadFormSchema };
+  const fns = { users: loadAdminUsers, pending: loadPendingUsers, roles: loadRolesPanel, notifs: loadNotifs, forms: loadFormSchema };
   fns[t]?.();
 };
 
@@ -53,13 +56,18 @@ function loadAdminUsers() {
 
   const unsub = onSnapshot(collection(db, 'users'), snap => {
     let users = snap.docs.map(d => ({ uid: d.id, ...d.data() }))
-      .filter(u => u.role !== 'pending' && u.labId === A.userData.labId)
-      .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      .filter(u => u.role !== 'pending');
+
+    // Lab admin sees own lab only; Owner sees all
+    if (!A.isOwner) {
+      users = users.filter(u => u.labId === A.userData.labId);
+    }
+    users.sort((a,b) => (a.name||'').localeCompare(b.name||''));
 
     const tbody = document.getElementById('usersTableBody');
     if (!tbody) return;
     tbody.innerHTML = users.map(u => {
-      const roleInfo = ROLES[u.role] || ROLES.pending;
+      const roleInfo = ROLES[u.role] || { tr: u.role, en: u.role };
       const roleLabel = roleInfo[A.lang] || u.role;
       const roleCls = u.role==='admin'?'b-admin':u.role==='pi'?'b-pi':u.role==='senior'?'b-open':'b-researcher';
       const overrideCount = Object.keys(u.permOverrides||{}).length;
@@ -80,14 +88,20 @@ function loadAdminUsers() {
   A.unsubs.push(unsub);
 }
 
-// EDIT USER (admin)
+// EDIT USER
 window.openEditUser = async (uid) => {
   const snap = await getDoc(doc(db, 'users', uid));
   if (!snap.exists()) return;
   const u = snap.data();
   document.getElementById('eu_uid').value = uid;
   document.getElementById('eu_name').value = u.name || '';
-  document.getElementById('eu_role').value = u.role || 'researcher';
+  // Populate role dropdown with all available roles
+  const roleSel = document.getElementById('eu_role');
+  roleSel.innerHTML = Object.entries(ROLES)
+    .filter(([k]) => k !== 'pending')
+    .sort((a,b) => (a[1].order||50) - (b[1].order||50))
+    .map(([k, r]) => `<option value="${k}" ${u.role===k?'selected':''}>${r[A.lang]||k}</option>`)
+    .join('');
   openOverlay('editUserModal');
 };
 
@@ -109,7 +123,7 @@ window.removeUser = async (uid, name) => {
   toast(t('deleted'), 'info');
 };
 
-// PERMISSIONS — Role defaults + per-user overrides
+// PERMISSIONS — Module-based with per-user overrides
 window.openPermissions = async (uid, name, role) => {
   document.getElementById('permUid').value = uid;
   document.getElementById('permUserName').textContent = name;
@@ -117,39 +131,43 @@ window.openPermissions = async (uid, name, role) => {
   const userData = snap.data() || {};
   const userRole = userData.role || role || 'researcher';
   const overrides = userData.permOverrides || {};
-  const defaults = ROLE_DEFAULTS[userRole] || ROLE_DEFAULTS.researcher;
+  const defaults = ROLE_DEFAULTS[userRole] || ROLE_DEFAULTS.pending;
 
   const grid = document.getElementById('permGrid');
   grid.innerHTML = `
     <div style="margin-bottom:12px;font-size:12px;color:var(--text3)">
-      ${A.lang==='tr'?'Rol':'Role'}: <strong>${(ROLES[userRole]||{})[A.lang]||userRole}</strong> — 
+      ${A.lang==='tr'?'Rol':'Role'}: <strong>${(ROLES[userRole]||{})[A.lang]||userRole}</strong> —
       ${A.lang==='tr'?'Üç durumlu: Rol Varsayılanı / Açık / Kapalı':'Three-state: Role Default / Override On / Override Off'}
     </div>
-    ${ALL_PERMS.map(p => {
-      const defVal = !!defaults[p.k];
-      const hasOverride = overrides[p.k] !== undefined;
-      const effectiveVal = hasOverride ? !!overrides[p.k] : defVal;
-      // state: 'default', 'on', 'off'
-      const state = hasOverride ? (overrides[p.k] ? 'on' : 'off') : 'default';
-      return `
-      <div class="perm-row" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div>
-          <span style="font-size:13px">${A.lang==='tr'?p.tr:p.en}</span>
-          <span style="font-size:10px;color:var(--text3);margin-left:6px">[${A.lang==='tr'?'varsayılan':'default'}: ${defVal?'✅':'❌'}]</span>
+    ${PERM_MODULES.map(m => `
+      <div style="margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:8px;padding:6px 0;border-bottom:2px solid var(--accent)">
+          ${A.lang==='tr'?m.tr:m.en}
         </div>
-        <div class="row" style="gap:4px">
-          <button class="btn btn-xs ${state==='default'?'btn-primary':'btn-ghost'}" onclick="setPermState('${p.k}','default')" id="ps_${p.k}_default" title="${A.lang==='tr'?'Rol Varsayılanı':'Role Default'}">
-            🔄
-          </button>
-          <button class="btn btn-xs ${state==='on'?'btn-primary':'btn-ghost'}" onclick="setPermState('${p.k}','on')" id="ps_${p.k}_on" title="${A.lang==='tr'?'Açık':'On'}">
-            ✅
-          </button>
-          <button class="btn btn-xs ${state==='off'?'btn-red':'btn-ghost'}" onclick="setPermState('${p.k}','off')" id="ps_${p.k}_off" title="${A.lang==='tr'?'Kapalı':'Off'}">
-            ❌
-          </button>
-        </div>
-      </div>`;
-    }).join('')}`;
+        ${m.perms.map(p => {
+          const defVal = !!defaults[p.k];
+          const hasOverride = overrides[p.k] !== undefined;
+          const state = hasOverride ? (overrides[p.k] ? 'on' : 'off') : 'default';
+          return `
+          <div class="perm-row" style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <span style="font-size:13px">${A.lang==='tr'?p.tr:p.en}</span>
+              <span style="font-size:10px;color:var(--text3);margin-left:6px">[${A.lang==='tr'?'varsayılan':'default'}: ${defVal?'✅':'❌'}]</span>
+            </div>
+            <div class="row" style="gap:4px">
+              <button class="btn btn-xs ${state==='default'?'btn-primary':'btn-ghost'}" onclick="setPermState('${p.k}','default')" id="ps_${p.k}_default" title="${A.lang==='tr'?'Rol Varsayılanı':'Role Default'}">
+                🔄
+              </button>
+              <button class="btn btn-xs ${state==='on'?'btn-primary':'btn-ghost'}" onclick="setPermState('${p.k}','on')" id="ps_${p.k}_on" title="${A.lang==='tr'?'Açık':'On'}">
+                ✅
+              </button>
+              <button class="btn btn-xs ${state==='off'?'btn-red':'btn-ghost'}" onclick="setPermState('${p.k}','off')" id="ps_${p.k}_off" title="${A.lang==='tr'?'Kapalı':'Off'}">
+                ❌
+              </button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`).join('')}`;
   openOverlay('permissionsModal');
 };
 
@@ -171,13 +189,186 @@ window.savePermissions = async () => {
     const isOff = offBtn?.classList.contains('btn-red');
     if (isOn) overrides[p.k] = true;
     else if (isOff) overrides[p.k] = false;
-    // else: default — no override
   });
   await updateDoc(doc(db, 'users', uid), { permOverrides: overrides });
   await auditLog('PERM_CHANGE', `Updated permissions for user ${uid} (${Object.keys(overrides).length} overrides)`,
     A.user.uid, A.userData.name, A.userData.labId);
   closeOverlay('permissionsModal');
   toast(t('saved'), 'ok');
+};
+
+// ── ROLES & PERMISSIONS PANEL (Owner only) ───
+function loadRolesPanel() {
+  if (!A.isOwner) return;
+  const el = document.getElementById('admContent');
+  el.innerHTML = `
+    <div class="row" style="margin-bottom:16px;justify-content:space-between">
+      <div style="font-size:13px;color:var(--text2)">
+        ${A.lang==='tr'?'Rolleri ve varsayılan izinlerini yönetin. Tüm roller (varsayılan + özel) Owner tarafından yapılandırılır.':'Manage roles and their default permissions. All roles (default + custom) are configured by Owner.'}
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openAddRoleModal()">
+        ＋ ${A.lang==='tr'?'Yeni Rol Ekle':'Add New Role'}
+      </button>
+    </div>
+    <div id="rolesListWrap"></div>`;
+  renderRolesList();
+}
+
+function renderRolesList() {
+  const el = document.getElementById('rolesListWrap');
+  if (!el) return;
+
+  const roleEntries = Object.entries(ROLES)
+    .filter(([k]) => k !== 'pending')
+    .sort((a,b) => (a[1].order||50) - (b[1].order||50));
+
+  el.innerHTML = roleEntries.map(([key, role]) => {
+    const isDefault = role.isDefault !== false;
+    const perms = ROLE_DEFAULTS[key] || {};
+    const enabledCount = Object.values(perms).filter(Boolean).length;
+    const totalCount = ALL_PERMS.length;
+    return `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:15px;font-weight:700">
+              ${role[A.lang] || key}
+              ${isDefault ? `<span class="badge b-pi" style="font-size:10px;margin-left:6px">${A.lang==='tr'?'Varsayılan':'Default'}</span>` : `<span class="badge b-open" style="font-size:10px;margin-left:6px">${A.lang==='tr'?'Özel':'Custom'}</span>`}
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px">
+              ${enabledCount}/${totalCount} ${A.lang==='tr'?'izin aktif':'permissions active'}
+              · key: <code style="font-size:10px">${key}</code>
+            </div>
+          </div>
+          <div class="row" style="gap:6px">
+            <button class="btn btn-primary btn-sm" onclick="openEditRolePerms('${key}')">
+              🔑 ${A.lang==='tr'?'İzinleri Düzenle':'Edit Permissions'}
+            </button>
+            ${!isDefault ? `<button class="btn btn-red btn-sm" onclick="deleteCustomRole('${key}')">🗑</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ADD NEW ROLE
+window.openAddRoleModal = () => {
+  document.getElementById('newRoleKey').value = '';
+  document.getElementById('newRoleTr').value = '';
+  document.getElementById('newRoleEn').value = '';
+  openOverlay('addRoleModal');
+};
+
+window.saveNewRole = async () => {
+  const key = document.getElementById('newRoleKey').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const tr = document.getElementById('newRoleTr').value.trim();
+  const en = document.getElementById('newRoleEn').value.trim();
+  if (!key || !tr || !en) { toast(t('required'), 'err'); return; }
+  if (ROLES[key]) { toast(A.lang==='tr'?'Bu rol anahtarı zaten var.':'This role key already exists.', 'err'); return; }
+
+  // Save to Firestore config
+  const snap = await getDoc(doc(db, 'config', 'roles'));
+  const data = snap.exists() ? snap.data() : { customRoles: {}, rolePermissions: {} };
+  data.customRoles = data.customRoles || {};
+  data.rolePermissions = data.rolePermissions || {};
+
+  const order = Object.keys(ROLES).length;
+  data.customRoles[key] = { tr, en, order };
+  // Start with all permissions off (like pending)
+  data.rolePermissions[key] = { ...ROLE_DEFAULTS.pending };
+
+  await setDoc(doc(db, 'config', 'roles'), data);
+
+  // Update in-memory
+  ROLES[key] = { tr, en, isDefault: false, order };
+  ROLE_DEFAULTS[key] = { ...ROLE_DEFAULTS.pending };
+
+  await auditLog('ADD_ROLE', `Created custom role: ${key} (${tr} / ${en})`, A.user.uid, A.userData.name, A.userData.labId);
+  closeOverlay('addRoleModal');
+  toast(t('saved'), 'ok');
+  renderRolesList();
+};
+
+// DELETE CUSTOM ROLE
+window.deleteCustomRole = async (key) => {
+  if (!confirm(`${A.lang==='tr'?'Bu rol silinsin mi?':'Delete this role?'} (${key})`)) return;
+
+  const snap = await getDoc(doc(db, 'config', 'roles'));
+  const data = snap.exists() ? snap.data() : { customRoles: {}, rolePermissions: {} };
+  delete data.customRoles[key];
+  delete data.rolePermissions[key];
+  await setDoc(doc(db, 'config', 'roles'), data);
+
+  delete ROLES[key];
+  delete ROLE_DEFAULTS[key];
+
+  await auditLog('DELETE_ROLE', `Deleted custom role: ${key}`, A.user.uid, A.userData.name, A.userData.labId);
+  toast(t('deleted'), 'info');
+  renderRolesList();
+};
+
+// EDIT ROLE PERMISSIONS (Owner edits default perms for any role)
+window.openEditRolePerms = (roleKey) => {
+  const role = ROLES[roleKey];
+  if (!role) return;
+  const perms = ROLE_DEFAULTS[roleKey] || {};
+
+  document.getElementById('editRolePermKey').value = roleKey;
+  document.getElementById('editRolePermTitle').textContent = `${role[A.lang]||roleKey} — ${A.lang==='tr'?'Varsayılan İzinler':'Default Permissions'}`;
+
+  const grid = document.getElementById('editRolePermGrid');
+  grid.innerHTML = PERM_MODULES.map(m => `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:2px solid var(--accent)">
+        <span style="font-size:13px;font-weight:700;color:var(--accent)">${A.lang==='tr'?m.tr:m.en}</span>
+        <div class="row" style="gap:4px">
+          <button class="btn btn-xs btn-ghost" onclick="toggleModulePerms('${m.module}',true)" title="${A.lang==='tr'?'Tümünü Aç':'Enable All'}">✅ ${A.lang==='tr'?'Hepsini Aç':'All On'}</button>
+          <button class="btn btn-xs btn-ghost" onclick="toggleModulePerms('${m.module}',false)" title="${A.lang==='tr'?'Tümünü Kapat':'Disable All'}">❌ ${A.lang==='tr'?'Hepsini Kapat':'All Off'}</button>
+        </div>
+      </div>
+      ${m.perms.map(p => {
+        const val = !!perms[p.k];
+        return `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:13px">${A.lang==='tr'?p.tr:p.en}</span>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="rp_${p.k}" ${val?'checked':''} data-module="${m.module}">
+          </label>
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+
+  openOverlay('editRolePermModal');
+};
+
+window.toggleModulePerms = (module, val) => {
+  document.querySelectorAll(`[data-module="${module}"]`).forEach(cb => {
+    cb.checked = val;
+  });
+};
+
+window.saveRolePerms = async () => {
+  const roleKey = document.getElementById('editRolePermKey').value;
+  const newPerms = {};
+  ALL_PERMS.forEach(p => {
+    const cb = document.getElementById(`rp_${p.k}`);
+    newPerms[p.k] = cb ? cb.checked : false;
+  });
+
+  // Update Firestore
+  const snap = await getDoc(doc(db, 'config', 'roles'));
+  const data = snap.exists() ? snap.data() : { customRoles: {}, rolePermissions: {} };
+  data.rolePermissions = data.rolePermissions || {};
+  data.rolePermissions[roleKey] = newPerms;
+  await setDoc(doc(db, 'config', 'roles'), data);
+
+  // Update in-memory
+  ROLE_DEFAULTS[roleKey] = newPerms;
+
+  await auditLog('EDIT_ROLE_PERMS', `Updated default permissions for role: ${roleKey}`, A.user.uid, A.userData.name, A.userData.labId);
+  closeOverlay('editRolePermModal');
+  toast(t('saved'), 'ok');
+  renderRolesList();
 };
 
 // PENDING USERS
@@ -207,11 +398,11 @@ function loadPendingUsers() {
           </div>
           <div class="row" style="gap:8px">
             <select class="fc" id="role_${u.uid}" style="width:160px">
-              <option value="student">${A.lang==='tr'?'Öğrenci':'Student'}</option>
-              <option value="researcher">${A.lang==='tr'?'Araştırmacı':'Researcher'}</option>
-              <option value="senior">${A.lang==='tr'?'Kıdemli Araştırmacı':'Senior Researcher'}</option>
-              <option value="pi">PI</option>
-              <option value="admin">${A.lang==='tr'?'Lab Yöneticisi':'Lab Admin'}</option>
+              ${Object.entries(ROLES)
+                .filter(([k]) => k !== 'pending')
+                .sort((a,b) => (a[1].order||50) - (b[1].order||50))
+                .map(([k, r]) => `<option value="${k}" ${k==='researcher'?'selected':''}>${r[A.lang]||k}</option>`)
+                .join('')}
             </select>
             <button class="btn btn-primary btn-sm" onclick="approveUser('${u.uid}','${u.name}','${u.email}')">
               ✅ ${A.lang==='tr'?'Onayla':'Approve'}
@@ -256,7 +447,9 @@ function loadNotifs() {
   const unsub = onSnapshot(
     query(collection(db, 'notifications'), orderBy('createdAt', 'desc')),
     snap => {
-      const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      let notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Lab scope
+      if (!A.isOwner) notifs = notifs.filter(n => n.labId === A.userData.labId);
       if (notifs.length === 0) {
         el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔔</div>
           <div class="empty-text">${A.lang==='tr'?'Bildirim yok.':'No notifications.'}</div></div>`;
@@ -418,8 +611,8 @@ window.deleteFormField = async (idx) => {
 
 // ── SETTINGS ─────────────────────────────────
 export function renderSettings() {
-  const isAdmin = A.userData.role === 'admin' || window.APP.isOwner;
-  if (!isAdmin) return;
+  const canSettings = hasPermission(A.userData, 'admin.settings') || A.isOwner;
+  if (!canSettings) return;
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="tabs" style="margin-bottom:18px">
@@ -730,17 +923,16 @@ window.saveEmailSettings = async () => {
 
 // ABOUT
 function loadAboutSettings() {
-  const sc = A.sysConfig;
   document.getElementById('settingsContent').innerHTML = `
     <div class="card" style="text-align:center;padding:40px">
       <div style="font-size:40px;margin-bottom:16px">🧬</div>
-      <div style="font-size:20px;font-weight:700;margin-bottom:4px">FEGLIMS v3.3</div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px">FEGLIMS v3.4</div>
       <div style="font-size:13px;color:var(--text3);margin-bottom:20px">
         Functional & Evolutionary Genetics Laboratory Information Management System
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:400px;margin:0 auto;text-align:left">
         <div><div class="fl">Kullanıcı / User</div><div style="margin-top:4px;font-size:13px">${A.userData.name}</div></div>
-        <div><div class="fl">Rol / Role</div><div style="margin-top:4px;font-size:13px">${ROLES[A.userData.role]?.[A.lang] || A.userData.role}</div></div>
+        <div><div class="fl">Rol / Role</div><div style="margin-top:4px;font-size:13px">${(ROLES[A.userData.role]||{})[A.lang] || A.userData.role}</div></div>
         <div><div class="fl">Lab</div><div style="margin-top:4px;font-size:13px">${A.userData.labName || '—'}</div></div>
         <div><div class="fl">Lab ID</div><div style="margin-top:4px;font-size:13px;font-family:var(--mono)">${A.userData.labId || '—'}</div></div>
         <div><div class="fl">E-posta</div><div style="margin-top:4px;font-size:13px">${A.user.email}</div></div>
@@ -754,7 +946,6 @@ function loadAboutSettings() {
 
 // HIDDEN FIELDS
 window.currentFormName = { value: 'stock' };
-// Expose for inline HTML
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.createElement('input');
   el.type = 'hidden'; el.id = 'currentFormName'; el.value = 'stock';

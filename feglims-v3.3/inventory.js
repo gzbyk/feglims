@@ -1,11 +1,12 @@
 // ═══════════════════════════════════════════
-//  FEGLIMS v3.0 — inventory.js
+//  FEGLIMS v3.4 — inventory.js
+//  Stock sharing + module-based permissions
 // ═══════════════════════════════════════════
 import {
   db, collection, doc, addDoc, getDoc, updateDoc, deleteDoc,
   query, orderBy, where, onSnapshot, getDocs, Timestamp,
   sendEmail, auditLog, addDays, fmtDate, todayISO,
-  capitalize, exportToExcel
+  capitalize, exportToExcel, hasPermission
 } from './firebase.js';
 
 const A = window.APP;
@@ -17,17 +18,23 @@ let searchTerm = '';
 
 export function renderInventory() {
   const content = document.getElementById('content');
-  const isAdmin = A.userData.role === 'admin';
+  const canEdit = hasPermission(A.userData, 'inventory.edit');
+  const canDelete = hasPermission(A.userData, 'inventory.delete');
+  const canBulk = hasPermission(A.userData, 'inventory.bulk');
+  const canExport = hasPermission(A.userData, 'inventory.export');
+  const canShare = hasPermission(A.userData, 'inventory.share');
+  const canChangeStatus = hasPermission(A.userData, 'inventory.changeStatus');
 
   const lineageTabs = (A.sysConfig.lineages || [
     'Wild-type','Isogenic','Balancer','Genome Editing','Disease Model','Transposon','RNAi','GAL4'
   ]);
 
   const tabsHtml = [
-    { k: 'all',  l: A.lang==='tr'?'Tüm Stoklar':'All Stocks' },
-    { k: 'mine', l: A.lang==='tr'?'Benim Stoklarım':'My Stocks' },
-    { k: 'weak', l: '⚠ '+(A.lang==='tr'?'Zayıf':'Weak'), cls: 't-amber' },
-    { k: 'lost', l: '❌ '+(A.lang==='tr'?'Kaybedildi':'Lost'), cls: 't-red' },
+    { k: 'all',    l: A.lang==='tr'?'Tüm Stoklar':'All Stocks' },
+    { k: 'mine',   l: A.lang==='tr'?'Benim Stoklarım':'My Stocks' },
+    { k: 'shared', l: A.lang==='tr'?'Paylaşılan Stoklar':'Shared Stocks', cls: 't-shared' },
+    { k: 'weak',   l: '⚠ '+(A.lang==='tr'?'Zayıf':'Weak'), cls: 't-amber' },
+    { k: 'lost',   l: '❌ '+(A.lang==='tr'?'Kaybedildi':'Lost'), cls: 't-red' },
     ...lineageTabs.map(l => ({ k: l, l }))
   ].map(tb => `
     <div class="tab ${tb.cls||''} ${tb.k===stockTab?'active':''}"
@@ -37,10 +44,11 @@ export function renderInventory() {
   content.innerHTML = `
     <div class="bulk-bar" id="bulkBar">
       <span class="bulk-count" id="bulkCount">0 seçili</span>
-      <button class="btn btn-secondary btn-sm" onclick="bulkStatusChange()">⟳ ${A.lang==='tr'?'Durum Değiştir':'Change Status'}</button>
-      <button class="btn btn-secondary btn-sm" onclick="bulkChangeOwner()">👤 ${A.lang==='tr'?'Sahip Değiştir':'Change Owner'}</button>
-      ${isAdmin?`<button class="btn btn-secondary btn-sm" onclick="bulkDelete()">🗑 ${A.lang==='tr'?'Sil':'Delete'}</button>`:''}
-      <button class="btn btn-secondary btn-sm" onclick="bulkExport()">📊 Excel</button>
+      ${canChangeStatus?`<button class="btn btn-secondary btn-sm" onclick="bulkStatusChange()">⟳ ${A.lang==='tr'?'Durum Değiştir':'Change Status'}</button>`:''}
+      ${canEdit?`<button class="btn btn-secondary btn-sm" onclick="bulkChangeOwner()">👤 ${A.lang==='tr'?'Sahip Değiştir':'Change Owner'}</button>`:''}
+      ${canDelete?`<button class="btn btn-secondary btn-sm" onclick="bulkDelete()">🗑 ${A.lang==='tr'?'Sil':'Delete'}</button>`:''}
+      ${canExport?`<button class="btn btn-secondary btn-sm" onclick="bulkExport()">📊 Excel</button>`:''}
+      ${canShare?`<button class="btn btn-secondary btn-sm" onclick="bulkToggleShare()">🔗 ${A.lang==='tr'?'Paylaş':'Share'}</button>`:''}
       <button class="btn btn-ghost btn-sm" onclick="clearSelection()">✕</button>
     </div>
     <div class="row" style="margin-bottom:14px;flex-wrap:wrap;gap:10px">
@@ -109,18 +117,29 @@ window.clearAdvFilters = () => {
 };
 
 function loadStocks() {
-  const q = query(collection(db, 'stocks'), orderBy('createdAt', 'desc'));
+  let q;
+  if (stockTab === 'shared') {
+    // Shared stocks: all stocks with shared=true from ANY lab
+    q = query(collection(db, 'stocks'), where('shared', '==', true), orderBy('createdAt', 'desc'));
+  } else {
+    q = query(collection(db, 'stocks'), orderBy('createdAt', 'desc'));
+  }
+
   const unsub = onSnapshot(q, snap => {
     let rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // Lab filter (multi-tenant isolation)
-    rows = rows.filter(r => r.labId === A.userData.labId);
+    if (stockTab === 'shared') {
+      // Group by lineage for shared view — no lab filter
+    } else {
+      // Lab filter (multi-tenant isolation)
+      rows = rows.filter(r => r.labId === A.userData.labId);
 
-    // Tab filter
-    if (stockTab === 'mine')       rows = rows.filter(r => r.responsibleUid === A.user.uid);
-    else if (stockTab === 'weak')  rows = rows.filter(r => r.status === 'Weak');
-    else if (stockTab === 'lost')  rows = rows.filter(r => r.status === 'Lost');
-    else if (!['all'].includes(stockTab)) rows = rows.filter(r => r.lineage === stockTab);
+      // Tab filter
+      if (stockTab === 'mine')       rows = rows.filter(r => r.responsibleUid === A.user.uid);
+      else if (stockTab === 'weak')  rows = rows.filter(r => r.status === 'Weak');
+      else if (stockTab === 'lost')  rows = rows.filter(r => r.status === 'Lost');
+      else if (!['all'].includes(stockTab)) rows = rows.filter(r => r.lineage === stockTab);
+    }
 
     // Search + advanced filters
     if (searchTerm) rows = rows.filter(r =>
@@ -128,7 +147,8 @@ function loadStocks() {
       (r.genotype||'').toLowerCase().includes(searchTerm) ||
       (r.responsible||'').toLowerCase().includes(searchTerm) ||
       (r.species||'').toLowerCase().includes(searchTerm) ||
-      (r.labStockName||'').toLowerCase().includes(searchTerm)
+      (r.labStockName||'').toLowerCase().includes(searchTerm) ||
+      (r.labName||'').toLowerCase().includes(searchTerm)
     );
     const fStatus = document.getElementById('stockFilterStatus')?.value || '';
     const fCenter = document.getElementById('stockFilterCenter')?.value || '';
@@ -147,7 +167,11 @@ function loadStocks() {
         : (av < bv ? 1 : -1);
     });
 
-    renderStockTable(rows);
+    if (stockTab === 'shared') {
+      renderSharedStockTable(rows);
+    } else {
+      renderStockTable(rows);
+    }
   });
   A.unsubs.push(unsub);
 }
@@ -155,7 +179,8 @@ function loadStocks() {
 function renderStockTable(rows) {
   const el = document.getElementById('stocksWrap');
   if (!el) return;
-  const isAdmin = A.userData.role === 'admin';
+  const canEdit = hasPermission(A.userData, 'inventory.edit');
+  const canChangeStatus = hasPermission(A.userData, 'inventory.changeStatus');
 
   if (rows.length === 0) {
     el.innerHTML = `<div class="tbl-wrap"><div class="empty-state">
@@ -176,6 +201,7 @@ function renderStockTable(rows) {
     { k: 'removalDate',    l: A.lang==='tr'?'Ergin Atımı':'Parent Removal' },
     { k: 'status',         l: A.lang==='tr'?'Durum':'Status' },
     { k: 'responsible',    l: A.lang==='tr'?'Sorumlu':'Responsible' },
+    { k: 'shared',         l: '🔗' },
   ];
 
   const thead = `<tr>
@@ -195,6 +221,7 @@ function renderStockTable(rows) {
              :(A.lang==='tr'?'Kaybedildi':'Lost');
     const removalAlert = s.removalDate && s.removalDate <= today;
     const checked = selectedStocks.has(s.id) ? 'checked' : '';
+    const sharedIcon = s.shared ? '🔗' : '';
     return `<tr data-stock-id="${s.id}" onclick="stockRowClick(event,'${s.id}')" style="cursor:pointer">
       <td class="cb-cell" onclick="event.stopPropagation()">
         <input type="checkbox" ${checked} onchange="toggleStockSelect('${s.id}',this.checked)">
@@ -209,12 +236,11 @@ function renderStockTable(rows) {
       <td class="${removalAlert?'amber-cell':'mono-cell'}">${fmtDate(s.removalDate, A.lang)}</td>
       <td><span class="badge ${bc}">${bl}</span></td>
       <td class="dim-cell" style="font-size:12px">${s.responsible||'—'}</td>
+      <td class="dim-cell" style="text-align:center">${sharedIcon}</td>
       <td class="row" style="gap:4px">
-        <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation();openStatusModal('${s.id}','${s.status}')">⟳</button>
-        ${isAdmin ? `
-          <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation();openEditStock('${s.id}')">✏</button>
-          <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation();addToListFromInventory('${s.id}')">＋📋</button>
-        ` : `<button class="btn btn-secondary btn-xs" onclick="event.stopPropagation();addToListFromInventory('${s.id}')">＋📋</button>`}
+        ${canChangeStatus ? `<button class="btn btn-secondary btn-xs" onclick="event.stopPropagation();openStatusModal('${s.id}','${s.status}')">⟳</button>` : ''}
+        ${canEdit ? `<button class="btn btn-secondary btn-xs" onclick="event.stopPropagation();openEditStock('${s.id}')">✏</button>` : ''}
+        <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation();addToListFromInventory('${s.id}')">＋📋</button>
       </td>
     </tr>`;
   }).join('');
@@ -226,6 +252,79 @@ function renderStockTable(rows) {
         <tbody>${tbody}</tbody>
       </table>
     </div>`;
+}
+
+// Shared stocks view — grouped by lineage
+function renderSharedStockTable(rows) {
+  const el = document.getElementById('stocksWrap');
+  if (!el) return;
+
+  if (rows.length === 0) {
+    el.innerHTML = `<div class="tbl-wrap"><div class="empty-state">
+      <div class="empty-icon">🔗</div>
+      <div class="empty-text">${A.lang==='tr'?'Paylaşılan stok yok.':'No shared stocks.'}</div>
+    </div></div>`;
+    return;
+  }
+
+  // Group by lineage
+  const groups = {};
+  rows.forEach(s => {
+    const lineage = s.lineage || (A.lang==='tr'?'Diğer':'Other');
+    if (!groups[lineage]) groups[lineage] = [];
+    groups[lineage].push(s);
+  });
+
+  let html = `<div style="font-size:12px;color:var(--text3);margin-bottom:12px">${rows.length} ${A.lang==='tr'?'paylaşılan stok':'shared stocks'}</div>`;
+
+  Object.entries(groups).sort((a,b) => a[0].localeCompare(b[0])).forEach(([lineage, stocks]) => {
+    html += `
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="display:flex;align-items:center;gap:8px">
+          <span class="badge b-open">${lineage}</span>
+          <span class="dim-cell" style="font-size:11px">${stocks.length} ${A.lang==='tr'?'stok':'stocks'}</span>
+        </div>
+        <div class="tbl-wrap" style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>${A.lang==='tr'?'Kod':'Code'}</th>
+              <th>${A.lang==='tr'?'Tür':'Species'}</th>
+              <th>${A.lang==='tr'?'Genotip':'Genotype'}</th>
+              <th>${A.lang==='tr'?'Merkez':'Center'}</th>
+              <th>°C</th>
+              <th>${A.lang==='tr'?'Durum':'Status'}</th>
+              <th>${A.lang==='tr'?'Lab':'Lab'}</th>
+              <th>${A.lang==='tr'?'Sorumlu':'Responsible'}</th>
+              <th></th>
+            </tr></thead>
+            <tbody>
+              ${stocks.map(s => {
+                const bc = s.status==='Active'?'b-active':s.status==='Weak'?'b-weak':'b-lost';
+                const isOwnLab = s.labId === A.userData.labId;
+                return `<tr onclick="openStockDetail('${s.id}')" style="cursor:pointer">
+                  <td class="accent-cell">${s.stockCode}</td>
+                  <td class="dim-cell" style="font-size:12px">${s.species||'D. melanogaster'}</td>
+                  <td class="truncate dim-cell" style="max-width:200px;font-size:12px" title="${s.genotype||''}">${s.genotype||'—'}</td>
+                  <td class="dim-cell">${s.center||'—'}</td>
+                  <td class="mono-cell">${s.climate||'—'}°C</td>
+                  <td><span class="badge ${bc}">${s.status}</span></td>
+                  <td class="dim-cell" style="font-size:12px">${s.labName||'—'}</td>
+                  <td class="dim-cell" style="font-size:12px">${s.responsible||'—'}</td>
+                  <td>
+                    ${!isOwnLab ? `
+                      <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation();requestTurkeyStock('${s.stockCode}','${s.responsibleEmail||''}','${s.responsible||''}','${s.labName||''}')">
+                        📨 ${A.lang==='tr'?'Talep Et':'Request'}
+                      </button>` : `<span class="dim-cell" style="font-size:11px">${A.lang==='tr'?'Kendi labınız':'Your lab'}</span>`}
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  });
+
+  el.innerHTML = html;
 }
 
 window.stockSort = (field) => {
@@ -316,7 +415,6 @@ window.saveBulkStatus = async () => {
 
 window.bulkChangeOwner = async () => {
   if (selectedStocks.size === 0) return;
-  // Load researchers
   const snap = await getDocs(collection(db, 'users'));
   const users = snap.docs.map(d => d.data()).filter(u =>
     u.role !== 'pending' && u.labId === A.userData.labId
@@ -375,10 +473,38 @@ window.bulkExport = async () => {
         'Ergin Atımı / Removal': d.removalDate,
         'Durum / Status': d.status,
         'Sorumlu / Responsible': d.responsible,
+        'Paylaşımlı / Shared': d.shared ? 'Yes' : 'No',
       });
     }
   }
   exportToExcel(rows, 'FEGLIMS_Stocks_Selected');
+};
+
+// BULK SHARE/UNSHARE TOGGLE
+window.bulkToggleShare = async () => {
+  if (selectedStocks.size === 0) return;
+  // Check current state — toggle: if any are NOT shared, share all; if all shared, unshare all
+  const ids = [...selectedStocks];
+  let anyNotShared = false;
+  for (const id of ids) {
+    const snap = await getDoc(doc(db, 'stocks', id));
+    if (snap.exists() && !snap.data().shared) { anyNotShared = true; break; }
+  }
+  const newShared = anyNotShared;
+  const action = newShared
+    ? (A.lang==='tr'?'paylaşıma açılsın mı?':'share these stocks?')
+    : (A.lang==='tr'?'paylaşımdan kaldırılsın mı?':'unshare these stocks?');
+  if (!confirm(`${ids.length} ${A.lang==='tr'?'stok':'stocks'} ${action}`)) return;
+
+  for (const id of ids) {
+    await updateDoc(doc(db, 'stocks', id), { shared: newShared, updatedAt: Timestamp.now() });
+  }
+  await auditLog('SHARE_TOGGLE', `Bulk: ${ids.length} stocks → shared=${newShared}`,
+    A.user.uid, A.userData.name, A.userData.labId);
+  clearSelection();
+  toast(newShared
+    ? (A.lang==='tr'?'Stoklar paylaşıma açıldı.':'Stocks shared.')
+    : (A.lang==='tr'?'Stoklar paylaşımdan kaldırıldı.':'Stocks unshared.'), 'ok');
 };
 
 // STOCK FORM
@@ -388,7 +514,9 @@ window.openNewStock = () => {
   document.getElementById('sf_resp_uid').value = A.user.uid;
   document.getElementById('sf_flybaseHint').textContent = '';
   document.getElementById('customCenterWrap').style.display = 'none';
-  // Load responsible dropdown
+  // Default shared=true
+  const sharedCb = document.getElementById('sf_shared');
+  if (sharedCb) sharedCb.checked = true;
   loadResponsibleDropdown();
   calcStockDates();
   openOverlay('stockModal');
@@ -396,10 +524,10 @@ window.openNewStock = () => {
 window.openModal = window.openNewStock;
 
 async function loadResponsibleDropdown() {
-  const isAdmin = A.userData.role === 'admin';
+  const canEdit = hasPermission(A.userData, 'inventory.edit');
   const wrap = document.getElementById('resp_dropdown_wrap');
   if (!wrap) return;
-  if (!isAdmin) { wrap.style.display = 'none'; return; }
+  if (!canEdit) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
   const snap = await getDocs(collection(db, 'users'));
   const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }))
@@ -407,7 +535,7 @@ async function loadResponsibleDropdown() {
   const sel = document.getElementById('sf_resp_select');
   if (!sel) return;
   sel.innerHTML = users.map(u =>
-    `<option value="${u.name}|${u.uid}|${u.email||''}">${u.name} (${t('r'+capitalize(u.role))})</option>`
+    `<option value="${u.name}|${u.uid}|${u.email||''}">${u.name}</option>`
   ).join('');
   sel.onchange = () => {
     const [name, uid] = sel.value.split('|');
@@ -483,6 +611,10 @@ window.saveStock = async () => {
   const respName = document.getElementById('sf_resp').value.trim();
   const respUid  = document.getElementById('sf_resp_uid').value || A.user.uid;
 
+  // Shared checkbox — default true
+  const sharedCb = document.getElementById('sf_shared');
+  const shared = sharedCb ? sharedCb.checked : true;
+
   const s = {
     stockCode: code, species: document.getElementById('sf_species').value,
     lineage: document.getElementById('sf_lineage').value,
@@ -493,10 +625,11 @@ window.saveStock = async () => {
     tubes: document.getElementById('sf_tubes').value || '1',
     status: document.getElementById('sf_status').value,
     responsible: respName, responsibleUid: respUid,
-    responsibleEmail: '', // filled below
+    responsibleEmail: '',
     notes: document.getElementById('sf_notes').value.trim(),
     cabinet: document.getElementById('sf_cabinet')?.value?.trim() || '',
     labStockName: document.getElementById('sf_labNameDiff')?.checked ? (document.getElementById('sf_labStockName')?.value?.trim() || '') : '',
+    shared,
     labId: A.userData.labId,
     labName: A.userData.labName || '',
     createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
@@ -516,7 +649,7 @@ window.saveStock = async () => {
 
   try {
     await addDoc(collection(db, 'stocks'), s);
-    await auditLog('ADD_STOCK', `Added ${s.stockCode} (${s.species})`,
+    await auditLog('ADD_STOCK', `Added ${s.stockCode} (${s.species})${shared?' [shared]':''}`,
       A.user.uid, A.userData.name, A.userData.labId);
     closeOverlay('stockModal');
     toast(t('saved'), 'ok');
@@ -568,7 +701,7 @@ window.saveStatusChange = async () => {
   toast(t('statusUpdated'), 'ok');
 };
 
-// EDIT STOCK (admin)
+// EDIT STOCK
 window.openEditStock = async (id) => {
   const snap = await getDoc(doc(db, 'stocks', id));
   if (!snap.exists()) return;
@@ -581,6 +714,8 @@ window.openEditStock = async (id) => {
   document.getElementById('esf_climate').value = s.climate;
   document.getElementById('esf_status').value = s.status;
   document.getElementById('esf_notes').value = s.notes || '';
+  const sharedCb = document.getElementById('esf_shared');
+  if (sharedCb) sharedCb.checked = s.shared !== false;
   await loadEditResponsible(id, s.responsibleUid);
   openOverlay('editStockModal');
 };
@@ -600,9 +735,11 @@ window.saveEditStock = async () => {
   const usnap = await getDoc(doc(db, 'users', respUid));
   const respName = usnap.exists() ? usnap.data().name : '';
 
-  // Version tracking — save previous values before updating
   const prevSnap = await getDoc(doc(db, 'stocks', id));
   const prevData = prevSnap.exists() ? prevSnap.data() : {};
+
+  const sharedCb = document.getElementById('esf_shared');
+  const shared = sharedCb ? sharedCb.checked : prevData.shared !== false;
 
   const newData = {
     stockCode:  document.getElementById('esf_code').value.trim(),
@@ -614,19 +751,18 @@ window.saveEditStock = async () => {
     notes:      document.getElementById('esf_notes').value.trim(),
     responsible: respName,
     responsibleUid: respUid,
+    shared,
     updatedAt:  Timestamp.now(),
   };
 
-  // Build change diff for versioning
   const changes = {};
-  const trackFields = ['stockCode','species','lineage','genotype','climate','status','notes','responsible'];
+  const trackFields = ['stockCode','species','lineage','genotype','climate','status','notes','responsible','shared'];
   trackFields.forEach(f => {
     if (String(prevData[f] || '') !== String(newData[f] || '')) {
       changes[f] = { old: prevData[f] || '', new: newData[f] || '' };
     }
   });
 
-  // Only save version if there are actual changes
   if (Object.keys(changes).length > 0) {
     const existingVersions = prevData.versionHistory || [];
     newData.versionHistory = [...existingVersions, {
@@ -692,9 +828,15 @@ window.openStockDetail = async (id) => {
         <div class="fl">Genotip / Genotype</div>
         <div class="font-mono" style="margin-top:4px;font-size:12px;word-break:break-all">${s.genotype||'—'}</div>
       </div>
-      <div class="span2">
-        <div class="fl">Durum / Status</div>
-        <span class="badge ${bc}" style="margin-top:4px">${bl}</span>
+      <div class="span2" style="display:flex;gap:16px;align-items:center">
+        <div>
+          <div class="fl">Durum / Status</div>
+          <span class="badge ${bc}" style="margin-top:4px">${bl}</span>
+        </div>
+        <div>
+          <div class="fl">${A.lang==='tr'?'Paylaşım':'Sharing'}</div>
+          <span class="badge ${s.shared?'b-active':'b-pending'}" style="margin-top:4px">${s.shared?(A.lang==='tr'?'Paylaşımlı':'Shared'):(A.lang==='tr'?'Özel':'Private')}</span>
+        </div>
       </div>
       ${s.notes?`<div class="span2"><div class="fl">Notlar / Notes</div><div style="margin-top:4px;font-size:13px;color:var(--text2)">${s.notes}</div></div>`:''}
     </div>
@@ -712,7 +854,6 @@ window.openStockDetail = async (id) => {
 window.addToListFromInventory = async (stockId) => {
   const snap = await getDoc(doc(db, 'stocks', stockId));
   if (!snap.exists()) return;
-  // Load user's lists
   const listsSnap = await getDocs(query(collection(db, 'stockLists'),
     where('createdBy', '==', A.user.uid)));
   const lists = listsSnap.docs.map(d => ({ id: d.id, ...d.data() }));

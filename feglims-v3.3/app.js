@@ -14,7 +14,8 @@ import {
   validateCAS, validateORCID,
   capitalize, exportToExcel,
   isSystemOwner, isLabAdmin,
-  ROLES, ROLE_DEFAULTS, ALL_PERMS, hasPermission
+  ROLES, DEFAULT_ROLES, ROLE_DEFAULTS, ALL_PERMS, PERM_MODULES,
+  hasPermission, loadCustomRoles
 } from './firebase.js';
 
 import { renderInventory, setStockTab } from './inventory.js';
@@ -385,14 +386,18 @@ async function bootDashboard() {
   // Store owner flag on APP
   A.isOwner = ownerFlag;
 
+  // Load custom roles from Firestore
+  await loadCustomRoles();
+
   // Make hasPermission available globally
   window.hasPermission = hasPermission;
   window.ROLES = ROLES;
   window.ROLE_DEFAULTS = ROLE_DEFAULTS;
   window.ALL_PERMS = ALL_PERMS;
+  window.PERM_MODULES = PERM_MODULES;
 
-  // Admin-only elements (Lab Admin panel)
-  const showAdmin = isAdmin || ownerFlag;
+  // Admin-only elements (Lab Admin panel) — use permission system
+  const showAdmin = hasPermission(A.userData, 'admin.viewUsers') || isAdmin || ownerFlag;
   document.getElementById('adminNavGroup').style.display = showAdmin ? 'block' : 'none';
   document.getElementById('ni-admin').style.display = showAdmin ? 'flex' : 'none';
   document.getElementById('ni-settings').style.display = showAdmin ? 'flex' : 'none';
@@ -411,8 +416,8 @@ async function bootDashboard() {
   if (allUsersItem) allUsersItem.style.display = ownerFlag ? 'flex' : 'none';
   if (globalLogItem) globalLogItem.style.display = ownerFlag ? 'flex' : 'none';
 
-  // Add stock button - role-based
-  const canAdd = hasPermission(A.userData, 'addStock');
+  // Add stock button - permission-based
+  const canAdd = hasPermission(A.userData, 'inventory.add');
   document.getElementById('addStockBtn').classList.toggle('hidden', !canAdd);
 
   // Theme & lang
@@ -506,10 +511,7 @@ window.nav = (section) => {
   document.getElementById('topbarTitle').textContent = t(titleMap[section] || section);
 
   // Show/hide add stock button
-  const showAdd = ['inventory'].includes(section) &&
-    (A.userData?.role === 'admin' ||
-     A.userData?.role === 'researcher' ||
-     A.userData?.permissions?.addStock);
+  const showAdd = ['inventory'].includes(section) && hasPermission(A.userData, 'inventory.add');
   document.getElementById('addStockBtn').classList.toggle('hidden', !showAdd);
 
   renderSection();
@@ -864,7 +866,7 @@ window.sendEmail = sendEmail;
 function renderDashboard() {
   const content = document.getElementById('content');
   const labId = A.userData.labId;
-  const canAssign = hasPermission(A.userData, 'assignTasks');
+  const canAssign = hasPermission(A.userData, 'labwork.assign');
 
   content.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:20px">
@@ -1554,6 +1556,7 @@ window.executeImport = async () => {
         data.responsible = data.responsible || A.userData.name;
         data.responsibleUid = A.user.uid;
         data.responsibleEmail = A.user.email;
+        data.shared = true; // Default: shared
       }
       if (target === 'chemical') {
         data.responsible = data.responsible || A.userData.name;
